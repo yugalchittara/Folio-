@@ -1,14 +1,14 @@
 # Folio
 
-**Folio is a business money console for accepting digital-asset payments, tracking their lifecycle, and using settled balances for business operations.**
+**Folio lets businesses accept payments in any supported asset from any supported blockchain, settle into a chosen destination, and put the resulting balance to work—paying suppliers, teams, and operating expenses from one console.**
 
 The demo shows one connected payment system for a merchant or business:
 
-- accept a payment at a physical POS terminal or an online storefront;
-- let a buyer choose a wallet and pay from a supported source network;
+- accept payments at a physical POS terminal or online storefront, without asking the business to manage the buyer's source chain;
+- let a buyer choose the wallet, supported asset, and supported blockchain they already use;
 - route the payment through the NEAR Intents-compatible Tidepool flow;
 - record wallet screening, payment progress, transaction references, and reconciliation data in the business console; and
-- prepare supplier, team, and bank-payout operations from the resulting business balance.
+- use the settled balance to pay suppliers and team members, or prepare a bank-payout instruction through Circle CPN.
 
 > **Demo notice:** This project is designed for testnet and hackathon demonstration. It is not a custody product, money transmitter, or live fiat off-ramp. Circle CPN and KYT are represented in the product flow, but require provider onboarding and server-side integrations before real use.
 
