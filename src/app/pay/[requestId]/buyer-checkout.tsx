@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 type Payment = { id: string; business_name: string; reference_id: string; description: string; amount: string; settlement_asset: string; settlement_chain: string; status: string; channel: string | null; source_chain: string | null; source_tx: string | null; near_tx: string | null; destination_tx: string | null };
+type PaymentEvent = { type: string; payload: string | Record<string, unknown> };
 type Stage = "review" | "wallet" | "routing" | "receipt";
 type Quote = { correlationId: string; quote: { depositAddress: string; amountIn: string; amountInFormatted?: string } };
 type Compliance = { provider: string; reason: string };
@@ -58,7 +59,23 @@ export default function BuyerCheckout({ requestId, embedded = false }: { request
     let current = true;
     void fetch(`/api/requests/${requestId}`)
       .then((response) => response.json())
-      .then((json) => { if (current && json.data) { setPayment(json.data); if (String(json.data.status).toUpperCase() === "SUCCESS") { setStage("receipt"); setRouteStatus("SUCCESS"); setSource(sources.find((item) => item.chain === json.data.source_chain) ?? sources[0]); } } })
+      .then((json) => {
+        if (!current || !json.data) return;
+        const savedPayment = json.data as Payment;
+        const status = String(savedPayment.status ?? "awaiting_payment").toLowerCase();
+        const savedQuote = quoteFromEvents(json.events ?? []);
+        setPayment(savedPayment);
+        setSource(sources.find((item) => item.chain === savedPayment.source_chain) ?? sources[0]);
+        if (savedQuote) setQuote(savedQuote);
+        if (savedPayment.source_tx) setDepositTx(savedPayment.source_tx);
+        setRouteStatus(status.replaceAll("_", " "));
+        if (status === "success") {
+          setStage("receipt");
+        } else if (savedQuote && ["deposit_submitted", "pending_deposit", "processing", "in_progress", "pending_swap", "swapping"].includes(status)) {
+          // A reopened checkout must resume the existing Intent route, not start over.
+          setStage("routing");
+        }
+      })
       .catch(() => { if (current) setError("We could not load this payment."); });
     return () => { current = false; };
   }, [requestId]);
@@ -131,7 +148,10 @@ export default function BuyerCheckout({ requestId, embedded = false }: { request
     const status = String(json.data.status ?? json.data.state ?? "PENDING_DEPOSIT");
     setRouteStatus(status.replaceAll("_", " "));
     await reloadPayment();
-    if (status === "SUCCESS") setStage("receipt");
+    if (status === "SUCCESS") {
+      // Keep the completed intent route visible briefly before handing off to the receipt.
+      window.setTimeout(() => setStage("receipt"), 1500);
+    }
   };
 
   const submitDeposit = async () => {
@@ -173,9 +193,9 @@ export default function BuyerCheckout({ requestId, embedded = false }: { request
           <div className="rounded-2xl border border-[#bcd987] bg-[#f4ffdf] p-4"><div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#d9ff80] text-[#365429]"><CheckCircleIcon size={20} weight="fill" /></span><div><p className="text-sm font-semibold">Wallet verified</p><p className="mt-1 text-xs leading-5 text-[#587047]">Ready for payment approval · {compliance?.provider ?? "Chain Analysis"}</p></div></div></div>
           <div className="mt-4 border-y border-[#e3e9df] py-4"><div className="flex items-center justify-between"><span className="text-sm text-[#687568]">You send</span><span className="text-lg font-semibold">{quote.quote.amountInFormatted ?? payment.amount} {source.token}</span></div><div className="mt-3 flex items-center justify-between"><span className="text-sm text-[#687568]">Network</span><span className="text-sm font-medium">{source.label}</span></div></div>
           <div className="mt-5 rounded-2xl bg-[#20331f] p-4 text-[#f5faed]"><div className="flex gap-3"><WalletIcon size={21} weight="duotone" className="mt-0.5 text-[#d9ff80]" /><div><p className="text-sm font-semibold">Approve in {walletChoice}</p><p className="mt-1 text-xs leading-5 text-[#c5d4c3]">We will open your wallet with the exact USDC transfer. Check the amount and recipient there before approving.</p></div></div><p className="mt-5 text-[11px] uppercase tracking-[.12em] text-[#b9cbb4]">One-time payment address</p><div className="mt-2 flex items-center gap-2 rounded-xl bg-white/10 p-3"><code className="min-w-0 flex-1 break-all text-xs text-[#f5faed]">{quote.quote.depositAddress}</code><button aria-label="Copy payment address" onClick={() => copy(quote.quote.depositAddress)} className="grid size-8 shrink-0 place-items-center rounded-lg bg-white/15"><CopyIcon size={16} weight="bold" /></button></div><button className="mt-4 w-full rounded-xl bg-[#d9ff80] px-4 py-3 text-sm font-semibold text-[#20331f]" disabled={busy} onClick={approvePaymentInWallet}>{busy ? "Waiting for wallet…" : `Pay ${quote.quote.amountInFormatted ?? payment.amount} USDC`}</button></div>
-          <details className="mt-5 rounded-xl border border-[#dce4d8] bg-white px-4 py-3"><summary className="cursor-pointer text-sm font-semibold">I already approved the transfer</summary><label className="mt-4 block text-xs font-semibold text-[#536052]">Transaction hash<input value={depositTx} onChange={(event) => setDepositTx(event.target.value)} placeholder="Paste transaction hash" className="mt-2 w-full rounded-xl border border-[#d7e1d3] px-3 py-3 text-sm font-normal outline-none focus:border-[#8abb47]" /></label><button className="buyer-action mt-4 w-full" disabled={busy} onClick={submitDeposit}>{busy ? "Verifying payment…" : "Verify payment"}</button></details>
+          <details className="mt-5 rounded-xl border border-[#dce4d8] bg-white px-4 py-3"><summary className="cursor-pointer text-sm font-semibold">I already approved the transfer</summary><label className="mt-4 block text-xs font-semibold text-[#536052]">Transaction hash<input value={depositTx} onChange={(event) => setDepositTx(event.target.value)} placeholder="Paste transaction hash" className="mt-2 w-full rounded-xl border border-[#d7e1d3] px-3 py-3 text-sm font-normal outline-none focus:border-[#8abb47]" /></label><button className="buyer-action mt-4 w-full" disabled={busy} onClick={submitDeposit}>{busy ? "Verifying payment…" : "Verify & start NEAR Intent route"}</button></details>
         </section>}
-        {stage === "routing" && <section className="mt-7 rounded-2xl border border-[#dce7d3] bg-white p-5"><div className="flex items-center gap-3"><span className="route-spinner" /><div><p className="text-sm font-semibold">Swapping through NEAR testnet</p><p className="mt-1 text-xs text-[#71806f]">{routeStatus}. We will update this automatically.</p></div></div><button onClick={() => checkStatus().catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to refresh payment status."))} className="mt-5 text-sm font-semibold text-[#456d24] underline underline-offset-4">Refresh status</button></section>}
+        {stage === "routing" && <IntentRouteProgress payment={payment} source={source} submittedTx={depositTx} routeStatus={routeStatus} onRefresh={() => checkStatus().catch((reason) => setError(reason instanceof Error ? reason.message : "Unable to refresh payment status."))} />}
       </>}
       {stage !== "receipt" && <div className="mt-7 flex items-center justify-between border-t border-[#e4ebe0] pt-4 text-xs text-[#758174]"><span>Merchant receives</span><span className="font-medium text-[#42513f]">{payment.amount} USDC on {payment.settlement_chain}</span></div>}
       {error && <p className="mt-4 text-xs leading-5 text-[#a04b45]">{error}</p>}
@@ -188,6 +208,48 @@ function Receipt({ payment, source, routeStatus }: { payment: Payment; source: s
   const sourceExplorer = payment.source_chain === "Ethereum Sepolia" ? "https://sepolia.etherscan.io" : payment.source_chain === "Arbitrum Sepolia" ? "https://sepolia.arbiscan.io" : payment.source_chain === "Base Sepolia" ? "https://sepolia.basescan.org" : null;
   const destinationExplorer = payment.settlement_chain === "NEAR Testnet" ? "https://testnet.nearblocks.io/txns" : payment.settlement_chain === "Base Sepolia" ? "https://sepolia.basescan.org/tx" : payment.settlement_chain === "Arbitrum Sepolia" ? "https://sepolia.arbiscan.io/tx" : payment.settlement_chain === "Ethereum Sepolia" ? "https://sepolia.etherscan.io/tx" : null;
   return <section><span className="grid size-11 place-items-center rounded-full bg-[#dfffb5] text-[#42651f]"><CheckCircleIcon size={25} weight="fill" /></span><p className="mt-5 text-xs font-semibold uppercase tracking-[.14em] text-[#6f7d6e]">Payment complete</p><h1 className="mt-2 text-[30px] font-semibold leading-none tracking-[-.05em]">Thanks. You’re all set.</h1><p className="mt-3 text-sm leading-6 text-[#657265]">{payment.business_name} received confirmation for your {source} payment.</p><div className="mt-7 divide-y divide-[#edf0ea] rounded-2xl border border-[#dce5d7] bg-white px-4 text-sm"><Row label="Amount" value={payment.amount + " " + payment.settlement_asset} /><Row label="Destination" value={payment.settlement_chain} /><Row label="Status" value={routeStatus.replaceAll("_", " ")} /><Row label="Receipt reference" value={payment.reference_id} mono /><Row label="Payment ID" value={payment.id} mono /></div>{payment.near_tx && <a className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-[#a9d775] bg-[#f1ffdf] p-4 text-[#274421] transition hover:bg-[#eaffcb]" href={`https://testnet.nearblocks.io/txns/${payment.near_tx}`} target="_blank" rel="noreferrer"><span><span className="block text-[11px] font-semibold uppercase tracking-[.13em] text-[#5d793f]">NEAR testnet · intent swap</span><span className="mt-1 block text-sm font-semibold">View the on-chain swap</span><span className="mt-1 block font-mono text-[11px] text-[#627a53]">{payment.near_tx.slice(0, 9)}…{payment.near_tx.slice(-8)}</span></span><ArrowSquareOutIcon size={20} weight="bold" /></a>}<div className="mt-5 grid gap-2 border-t border-[#e4ebe0] pt-4"><p className="text-xs font-semibold text-[#6f7d6e]">Other transaction details</p>{payment.source_tx && sourceExplorer && <a className="inline-flex items-center gap-2 text-xs font-medium text-[#456d24] underline underline-offset-4" href={`${sourceExplorer}/tx/${payment.source_tx}`} target="_blank" rel="noreferrer">Buyer payment on {payment.source_chain} <ArrowSquareOutIcon size={14} weight="bold" /></a>}{payment.destination_tx && destinationExplorer && <a className="inline-flex items-center gap-2 text-xs font-medium text-[#456d24] underline underline-offset-4" href={`${destinationExplorer}/${payment.destination_tx}`} target="_blank" rel="noreferrer">Merchant receipt on {payment.settlement_chain} <ArrowSquareOutIcon size={14} weight="bold" /></a>}</div></section>;
+}
+
+function IntentRouteProgress({ payment, source, submittedTx, routeStatus, onRefresh }: { payment: Payment; source: Source; submittedTx: string; routeStatus: string; onRefresh: () => void }) {
+  const status = routeStatus.toUpperCase().replaceAll(" ", "_");
+  const sourceTx = payment.source_tx ?? submittedTx;
+  const sourceExplorer = source.chain === "Ethereum Sepolia" ? "https://sepolia.etherscan.io/tx" : source.chain === "Arbitrum Sepolia" ? "https://sepolia.arbiscan.io/tx" : source.chain === "Base Sepolia" ? "https://sepolia.basescan.org/tx" : null;
+  const sourceConfirmed = !["WAITING_FOR_PAYMENT", "PENDING_DEPOSIT", ""].includes(status);
+  const intentRunning = ["PROCESSING", "IN_PROGRESS", "PENDING_SWAP", "SWAPPING", "SUCCESS"].some((value) => status.includes(value));
+  const complete = status === "SUCCESS";
+  const stages = [
+    { label: "USDC transfer submitted", detail: sourceTx ? `Transaction sent on ${source.chain}` : `Waiting for a transaction on ${source.chain}`, state: sourceTx ? "done" : "active", href: sourceTx && sourceExplorer ? `${sourceExplorer}/${sourceTx}` : undefined, action: sourceTx ? "View source transaction" : undefined },
+    { label: "Source transaction verified", detail: sourceConfirmed ? "Confirmed against this payment route" : `Checking ${source.chain} confirmation`, state: sourceConfirmed ? "done" : sourceTx ? "active" : "pending" },
+    { label: "NEAR Intents routing", detail: payment.near_tx ? "Intent execution confirmed on NEAR Testnet" : intentRunning ? "Finding the route to the merchant wallet" : "Route begins after source confirmation", state: payment.near_tx || complete ? "done" : intentRunning ? "active" : "pending", href: payment.near_tx ? `https://testnet.nearblocks.io/txns/${payment.near_tx}` : undefined, action: payment.near_tx ? "View NEAR Intent" : undefined },
+    { label: "Merchant payout confirmed", detail: complete ? `${payment.amount} ${payment.settlement_asset} delivered on ${payment.settlement_chain}` : `Sending ${payment.amount} ${payment.settlement_asset} to ${payment.settlement_chain}`, state: complete ? "done" : intentRunning ? "active" : "pending" },
+  ] as const;
+
+  return <section className="mt-7 overflow-hidden rounded-2xl border border-[#cfe0ca] bg-white"><div className="border-b border-[#e2ebde] bg-[#f4f9f0] px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[.14em] text-[#5d793f]">Settlement in progress</p><h2 className="mt-1 text-lg font-semibold tracking-[-.03em]">Your payment is moving through NEAR Intents.</h2><p className="mt-1 text-xs leading-5 text-[#657265]">Folio verifies the source transfer, routes it across chains, then confirms the merchant payout.</p></div><ol className="divide-y divide-[#e9efe6] px-5">{stages.map((item, index) => <li key={item.label} className="flex gap-3 py-4"><RouteMarker state={item.state} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-semibold text-[#20331f]">{item.label}</p>{item.href && <a href={item.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#456d24] underline underline-offset-4">{item.action}<ArrowSquareOutIcon size={13} weight="bold" /></a>}</div><p className="mt-1 text-xs leading-5 text-[#71806f]">{item.detail}</p>{index === 0 && sourceTx && <code className="mt-2 block truncate font-mono text-[11px] text-[#647562]">{sourceTx}</code>}</div></li>)}</ol><div className="flex items-center justify-between gap-3 border-t border-[#e2ebde] bg-[#fbfcf9] px-5 py-3"><p className="text-xs text-[#71806f]">Route status: <span className="font-semibold text-[#42513f]">{routeStatus.replaceAll("_", " ")}</span></p><button onClick={onRefresh} className="text-xs font-semibold text-[#456d24] underline underline-offset-4">Refresh status</button></div></section>;
+}
+
+function RouteMarker({ state }: { state: "done" | "active" | "pending" }) {
+  if (state === "done") return <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[#dfffb5] text-[#42651f]"><CheckCircleIcon size={15} weight="fill" /></span>;
+  if (state === "active") return <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-[#eff8e8] text-[#527d28]"><CircleNotchIcon size={15} weight="bold" className="animate-spin" /></span>;
+  return <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border border-[#dce5d7] bg-white text-[11px] font-semibold text-[#879486]">·</span>;
+}
+
+function quoteFromEvents(events: PaymentEvent[]): Quote | null {
+  const event = events.find((item) => item.type === "tidepool.quote_ready");
+  if (!event) return null;
+  try {
+    const payload = typeof event.payload === "string" ? JSON.parse(event.payload) as Record<string, unknown> : event.payload;
+    if (typeof payload.depositAddress !== "string" || typeof payload.amountIn !== "string") return null;
+    return {
+      correlationId: typeof payload.correlationId === "string" ? payload.correlationId : "resumed-route",
+      quote: {
+        depositAddress: payload.depositAddress,
+        amountIn: payload.amountIn,
+        amountInFormatted: typeof payload.amountInFormatted === "string" ? payload.amountInFormatted : undefined,
+      },
+    };
+  } catch {
+    return null;
+  }
 }
 
 function Row({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) { return <div className="flex justify-between gap-5 py-4"><dt className="text-[#758174]">{label}</dt><dd className={mono ? "font-mono text-xs" : "font-medium"}>{value}</dd></div>; }

@@ -6,7 +6,9 @@ async function forward(request: Request, path: string[]) {
   const route = path.join("/");
   if (!allowed.has(route)) return NextResponse.json({ error: "Unsupported 1Click operation" }, { status: 404 });
   const token = process.env.ONECLICK_JWT;
-  const base = process.env.ONECLICK_BASE_URL ?? "https://1click.chaindefuser.com";
+  // Quotes and status polling already use Tidepool as their fallback. Deposit submission
+  // must use the same route provider or a payment can be sent without ever being tracked.
+  const base = process.env.ONECLICK_BASE_URL ?? "https://www.usetidepool.tech";
   const isTidepool = new URL(base).hostname === "www.usetidepool.tech";
   if (!token && !isTidepool) return NextResponse.json({ error: "ONECLICK_JWT is not configured. A live transaction cannot start until partner credentials are supplied." }, { status: 503 });
   const headers: Record<string, string> = { "Content-Type": "application/json" };
