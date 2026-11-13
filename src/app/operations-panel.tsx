@@ -11,12 +11,35 @@ type Operation = { id: string; kind: string; recipient: string; amount: string; 
 type IntentQuote = { quote: { depositAddress: string; amountIn: string; amountInFormatted?: string; amountOutFormatted?: string } };
 type Action = "send" | "bank";
 type RecipientType = "Supplier" | "Team member";
+type MeteorWallet = {
+  getAccounts: () => Promise<Array<{ accountId: string }>>;
+  signIn: (params: { contractId?: string; methodNames?: string[] }) => Promise<Array<{ accountId: string }>>;
+  signAndSendTransaction: (params: { signerId: string; receiverId: string; actions: unknown[] }) => Promise<{ transaction?: { hash?: string } | null } | void>;
+};
 
 const shortAddress = (address: string) => address.length > 16 ? `${address.slice(0, 8)}…${address.slice(-6)}` : address;
 const isEvmAddress = (address: string) => /^0x[a-fA-F0-9]{40}$/.test(address);
 const txExplorer = (network: string, hash: string) => `${network === "Arbitrum Sepolia" ? "https://sepolia.arbiscan.io" : "https://sepolia.basescan.org"}/tx/${hash}`;
 const tokenUnits = (amount: string, decimals: number) => { const [whole, fraction = ""] = amount.split("."); return BigInt(whole) * BigInt(10) ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0") || "0"); };
-const operationStatus = (status: string) => ({ confirmed: "Settled", routing: "Swapping through NEAR", submitted: "Confirming", awaiting_wallet_approval: "Awaiting Rabby", review_ready: "Ready for review", awaiting_bank_connection: "Awaiting bank connection", simulation_ready: "Legacy demo", simulated_completed: "Legacy demo only", verification_failed: "Could not verify" }[status] ?? status.replaceAll("_", " "));
+const operationStatus = (status: string) => ({ confirmed: "Settled", routing: "Swapping through NEAR", submitted: "Confirming", awaiting_wallet_approval: "Awaiting wallet", review_ready: "Ready for review", awaiting_bank_connection: "Awaiting bank connection", simulation_ready: "Legacy demo", simulated_completed: "Legacy demo only", verification_failed: "Could not verify" }[status] ?? status.replaceAll("_", " "));
+
+async function connectMeteorWallet(expectedAccountId: string) {
+  const [{ setupWalletSelector }, { setupMeteorWallet }] = await Promise.all([
+    import("@near-wallet-selector/core"),
+    import("@near-wallet-selector/meteor-wallet"),
+  ]);
+  const selector = await setupWalletSelector({ network: "testnet", modules: [setupMeteorWallet()] });
+  const meteor = await selector.wallet("meteor-wallet") as unknown as MeteorWallet;
+  let accounts = await meteor.getAccounts();
+  if (!accounts.length) {
+    await meteor.signIn({});
+    accounts = await meteor.getAccounts();
+  }
+  if (!accounts.some((account) => account.accountId.toLowerCase() === expectedAccountId.toLowerCase())) {
+    throw new Error(`Meteor is connected to a different NEAR account. Select ${expectedAccountId} in Meteor Wallet.`);
+  }
+  return meteor;
+}
 
 export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wallets: Wallet[]; contacts: Contact[]; onAddWallet: () => void }) {
   const [selectedWalletId, setSelectedWalletId] = useState("");
@@ -47,6 +70,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
   const [flowError, setFlowError] = useState("");
   const [activeOperation, setActiveOperation] = useState<Operation | null>(null);
   const [activeTxHash, setActiveTxHash] = useState("");
+  const [activeNearTx, setActiveNearTx] = useState("");
   const [activeQuote, setActiveQuote] = useState<IntentQuote | null>(null);
 
   const selectedWallet = wallets.find((wallet) => wallet.id === selectedWalletId)
@@ -55,6 +79,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
   const effectiveWalletId = selectedWallet?.id;
   const relevantContacts = contacts.filter((contact) => recipientType === "Supplier" ? contact.type === "Supplier" : contact.type === "Team member");
   const selectedBankAccount = bankAccounts.find((account) => account.id === bankAccountId);
+  const isNearSourceWallet = selectedWallet?.network === "NEAR Testnet";
   const walletDrafts: Operation[] = [];
   const activeOperationId = activeOperation?.id;
 
@@ -155,12 +180,12 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
     if (action === "bank" && !selectedBankAccount) return setFormError("Choose or add a bank destination.");
     if (action === "send" && !recipient.trim()) return setFormError("Add a recipient.");
     if (action === "send") {
-      if (!["Base Sepolia", "Arbitrum Sepolia"].includes(selectedWallet.network)) return setFormError("Live payments currently support Base Sepolia and Arbitrum Sepolia wallets.");
+      if (!["Base Sepolia", "Arbitrum Sepolia", "NEAR Testnet"].includes(selectedWallet.network)) return setFormError("Choose a supported business wallet.");
       if (!["Base Sepolia", "Arbitrum Sepolia"].includes(recipientNetwork)) return setFormError("Choose Base Sepolia or Arbitrum Sepolia for the recipient.");
       if (!isEvmAddress(address.trim())) return setFormError("Enter a valid 0x recipient wallet address.");
       if (address.trim().toLowerCase() === selectedWallet.address.toLowerCase()) return setFormError("Choose a recipient address different from the source wallet.");
     }
-    setFlowState("review"); setFlowError(""); setActiveOperation(null); setActiveTxHash(""); setActiveQuote(null); setReviewOpen(true);
+    setFlowState("review"); setFlowError(""); setActiveOperation(null); setActiveTxHash(""); setActiveNearTx(""); setActiveQuote(null); setReviewOpen(true);
   };
 
   const createOperation = async (intent: "send" | "prepare") => {
@@ -204,6 +229,41 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
         setActiveOperation(json.data);
         setOperations((previous) => previous.map((item) => item.id === created!.id ? json.data : item));
         setFlowState("complete");
+      } else if (isNearSourceWallet) {
+        setFlowState("connecting");
+        const meteor = await connectMeteorWallet(selectedWallet.address);
+        created = await createOperation("send");
+        setFlowState("quoting");
+        const quoteResponse = await fetch(`/api/operations/${encodeURIComponent(created.id)}/tidepool/quote`, { method: "POST" });
+        const quoteJson = await quoteResponse.json();
+        if (!quoteResponse.ok || !quoteJson.data?.quote?.depositAddress) throw new Error(quoteJson.error ?? "Unable to create a NEAR intent route.");
+        const quote = quoteJson.data as IntentQuote;
+        if (!/^[a-z0-9._-]+\.testnet$/i.test(quote.quote.depositAddress)) throw new Error("The NEAR route did not return a valid NEAR Testnet deposit account.");
+        setActiveQuote(quote);
+        created = { ...created, deposit_address: quote.quote.depositAddress, route_status: "QUOTE_READY" };
+        setActiveOperation(created);
+        setOperations((previous) => previous.map((item) => item.id === created!.id ? created! : item));
+        const freshBalanceResponse = await fetch(`/api/wallets/${encodeURIComponent(selectedWallet.id)}/balance`, { cache: "no-store" });
+        const freshBalanceJson = await freshBalanceResponse.json();
+        if (!freshBalanceResponse.ok) throw new Error(freshBalanceJson.error ?? "Unable to check the source wallet balance.");
+        const walletBalance = freshBalanceJson.data as Balance;
+        if (BigInt(quote.quote.amountIn) > tokenUnits(walletBalance.balance, walletBalance.decimals)) throw new Error("This NEAR wallet does not hold enough testnet USDC for the quoted payment.");
+        setFlowState("awaiting");
+        const { actionCreators } = await import("@near-js/transactions");
+        const outcome = await meteor.signAndSendTransaction({
+          signerId: selectedWallet.address,
+          receiverId: "usdc.tidepool-sandbox.testnet",
+          actions: [actionCreators.functionCall("ft_transfer", { receiver_id: quote.quote.depositAddress, amount: quote.quote.amountIn, memo: `Folio ${created.id}` }, BigInt("30000000000000"), BigInt(1))],
+        });
+        const nearTx = outcome?.transaction?.hash;
+        if (!nearTx) throw new Error("Meteor did not return a NEAR transaction reference.");
+        setActiveNearTx(nearTx);
+        const response = await fetch(`/api/operations/${encodeURIComponent(created.id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "submitNear", nearTx }) });
+        const json = await response.json();
+        if (!response.ok) throw new Error(json.error ?? "The Meteor transaction was sent, but tracking could not start.");
+        setActiveOperation(json.data);
+        setOperations((previous) => previous.map((item) => item.id === created!.id ? json.data : item));
+        setFlowState("confirming");
       } else {
         setFlowState("connecting");
         const providers = window.ethereum?.providers ?? (window.ethereum ? [window.ethereum] : []);
@@ -280,20 +340,20 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
       </div>
       {formError && <p role="alert" className="mt-4 text-sm text-[#a04b45]">{formError}</p>}
       {success && <p role="status" className="mt-4 flex items-start gap-2 text-sm text-[#436e2e]"><CheckCircleIcon size={17} weight="fill" className="mt-0.5 shrink-0" />{success}</p>}
-      <button onClick={reviewPayment} className="action-button mt-6">{action === "send" ? "Review NEAR intent payment" : "Review payout"} <ArrowRightIcon size={16} weight="bold" /></button>
+      <button onClick={reviewPayment} className="action-button mt-6">{action === "send" ? "Submit payment" : "Review payout"} <ArrowRightIcon size={16} weight="bold" /></button>
       {action === "bank" && <p className="mt-3 text-xs text-[#718070]">Payout requests stay pending until Circle CPN is connected. No funds move at this stage.</p>}
     </div>}
     {walletDrafts.length > 0 && <div className="mt-8 max-w-6xl"><h3 className="text-sm font-semibold">Recent operations for this wallet</h3><div className="mt-3 divide-y divide-[#e5ebe1] rounded-2xl border border-[#dfe6dc] bg-white px-4">{walletDrafts.map((item) => <div key={item.id} className="flex items-center justify-between gap-4 py-3 text-sm"><div><p className="font-medium">{item.recipient}</p><p className="mt-1 text-xs text-[#718070]">{item.kind === "fiat_offramp" ? "Bank payout request" : "NEAR intent payment"} · {operationStatus(item.status)}</p><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">{item.near_tx && <a href={`https://testnet.nearblocks.io/txns/${item.near_tx}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#456d24] underline underline-offset-2">NEAR swap <ArrowSquareOutIcon size={12} /></a>}{item.tx_hash && <a href={txExplorer(selectedWallet!.network, item.tx_hash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#456d24] underline underline-offset-2">Source payment <ArrowSquareOutIcon size={12} /></a>}{item.destination_tx && <a href={txExplorer(item.network ?? "", item.destination_tx)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-[#456d24] underline underline-offset-2">Recipient payout <ArrowSquareOutIcon size={12} /></a>}</div></div><p className="shrink-0 font-semibold">{item.amount} USDC</p></div>)}</div></div>}
     {reviewOpen && selectedWallet && <div className="fixed inset-0 z-20 grid place-items-center bg-[#18221a]/45 p-4"><div role="dialog" aria-modal="true" aria-label={action === "send" ? "Review testnet payment" : "Review bank payout"} className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-[0_30px_70px_-25px_rgba(20,35,20,.38)] sm:p-7">
-      {flowState === "complete" ? <><span className="grid size-12 place-items-center rounded-full bg-[#d9ff80] text-[#365429]"><CheckCircleIcon size={27} weight="fill" /></span><p className="eyebrow mt-6">{action === "send" ? "NEAR intent settled" : "Payout request prepared"}</p><h3 className="mt-2 text-2xl font-semibold tracking-tight">{action === "send" ? "Payment delivered." : "Ready for bank connection."}</h3><p className="mt-3 text-sm leading-6 text-[#718070]">{action === "send" ? "The intent swap completed on NEAR testnet and the recipient payout has been recorded." : "Your payout request is saved. It has not been sent to Circle or to a bank; no funds have moved."}</p><div className="mt-5 rounded-xl bg-[#f5f8f2] p-4 text-sm"><p>Reference: <span className="font-mono text-xs">{activeOperation?.provider_reference ?? activeOperation?.id}</span></p><div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">{activeOperation?.near_tx && <a href={`https://testnet.nearblocks.io/txns/${activeOperation.near_tx}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-semibold text-[#456d24] underline underline-offset-2">View NEAR intent swap <ArrowSquareOutIcon size={15} /></a>}{activeTxHash && <a href={txExplorer(selectedWallet.network, activeTxHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-semibold text-[#456d24] underline underline-offset-2">View source payment <ArrowSquareOutIcon size={15} /></a>}</div></div><button onClick={() => { setReviewOpen(false); setRecipient(""); setAddress(""); setBankAccountId(""); setAmount(""); setReference(""); setContactId(""); }} className="action-button mt-6 w-full">Done</button></> : <>
-        <div className="flex items-start justify-between gap-4"><div><p className="eyebrow">{action === "send" ? "NEAR intent payment" : "Bank payout request"}</p><h3 className="mt-2 text-2xl font-semibold tracking-tight">{flowState === "review" ? "Review the details" : action === "send" ? "Following your intent swap" : "Preparing your request"}</h3></div>{flowState === "review" && <button onClick={() => setReviewOpen(false)} className="text-xs font-semibold text-[#718070] underline underline-offset-2">Edit</button>}</div>
+      {flowState === "complete" ? <><span className="grid size-12 place-items-center rounded-full bg-[#d9ff80] text-[#365429]"><CheckCircleIcon size={27} weight="fill" /></span><p className="eyebrow mt-6">{action === "send" ? "NEAR intent settled" : "Payout request prepared"}</p><h3 className="mt-2 text-2xl font-semibold tracking-tight">{action === "send" ? "Payment delivered." : "Ready for bank connection."}</h3><p className="mt-3 text-sm leading-6 text-[#718070]">{action === "send" ? "The intent swap completed on NEAR testnet and the recipient payout has been recorded." : "Your payout request is saved. It has not been sent to Circle or to a bank; no funds have moved."}</p><div className="mt-5 rounded-xl bg-[#f5f8f2] p-4 text-sm"><p>Reference: <span className="font-mono text-xs">{activeOperation?.provider_reference ?? activeOperation?.id}</span></p><div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">{activeOperation?.near_tx && <a href={`https://testnet.nearblocks.io/txns/${activeOperation.near_tx}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-semibold text-[#456d24] underline underline-offset-2">View NEAR intent swap <ArrowSquareOutIcon size={15} /></a>}{activeNearTx && <a href={`https://testnet.nearblocks.io/txns/${activeNearTx}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-semibold text-[#456d24] underline underline-offset-2">View Meteor payment <ArrowSquareOutIcon size={15} /></a>}{activeTxHash && <a href={txExplorer(selectedWallet.network, activeTxHash)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 font-semibold text-[#456d24] underline underline-offset-2">View source payment <ArrowSquareOutIcon size={15} /></a>}</div></div><button onClick={() => { setReviewOpen(false); setRecipient(""); setAddress(""); setBankAccountId(""); setAmount(""); setReference(""); setContactId(""); }} className="action-button mt-6 w-full">Done</button></> : <>
+        <div className="flex items-start justify-between gap-4"><div><p className="eyebrow">{action === "send" ? "Payment details" : "Bank payout request"}</p><h3 className="mt-2 text-2xl font-semibold tracking-tight">{flowState === "review" ? "Review the details" : action === "send" ? "Following your intent swap" : "Preparing your request"}</h3></div>{flowState === "review" && <button onClick={() => setReviewOpen(false)} className="text-xs font-semibold text-[#718070] underline underline-offset-2">Edit</button>}</div>
         <div className="mt-6 divide-y divide-[#e8ede5] rounded-2xl border border-[#dfe6dc] px-4 text-sm"><div className="flex justify-between gap-4 py-3"><span className="text-[#718070]">From</span><span className="text-right font-medium">{selectedWallet.label}<br/><small className="font-normal text-[#718070]">{shortAddress(selectedWallet.address)} · {selectedWallet.network}</small></span></div><div className="flex justify-between gap-4 py-3"><span className="text-[#718070]">To</span><span className="text-right font-medium">{action === "send" ? recipient : selectedBankAccount?.nickname}<br/><small className="font-normal text-[#718070]">{action === "send" ? shortAddress(address) : `${selectedBankAccount?.bank_name} · ••••${selectedBankAccount?.account_last_four} · ${selectedBankAccount?.currency}`}</small></span></div><div className="flex justify-between gap-4 py-3"><span className="text-[#718070]">Amount</span><strong>{Number(amount).toFixed(2)} USDC</strong></div></div>
         {action === "bank" && <p className="mt-4 rounded-xl bg-[#f5f8f2] p-3 text-xs leading-5 text-[#5e7058]">This creates a local payout request only. Circle CPN is not connected, so the request cannot be executed yet.</p>}
-        {action === "send" && activeQuote && <div className="mt-4 rounded-xl border border-[#c8e298] bg-[#f4ffdf] p-3 text-xs leading-5 text-[#4d663d]"><strong className="block text-[#31531d]">Quoted through NEAR Intent</strong> Rabby will send {activeQuote.quote.amountInFormatted ?? activeQuote.quote.amountIn} USDC. The recipient receives {activeQuote.quote.amountOutFormatted ?? amount} USDC on {recipientNetwork}.</div>}
-        {flowState !== "review" && <div className="mt-5 flex items-center gap-3 rounded-xl bg-[#f5f8f2] p-4 text-sm"><CircleNotchIcon size={20} weight="bold" className="shrink-0 animate-spin text-[#628b34]" /><span>{flowState === "connecting" ? "Connecting Rabby and checking funds…" : flowState === "quoting" ? "Creating a NEAR intent route…" : flowState === "awaiting" ? "Approve the exact quoted amount in Rabby…" : flowState === "confirming" ? "Settling the intent through NEAR testnet…" : flowState === "preparing" ? "Saving your payout request…" : "Review the issue below."}</span></div>}
+        {action === "send" && activeQuote && <div className="mt-4 rounded-xl border border-[#c8e298] bg-[#f4ffdf] p-3 text-xs leading-5 text-[#4d663d]"><strong className="block text-[#31531d]">Quoted through NEAR Intent</strong> {isNearSourceWallet ? "Meteor will send" : "Rabby will send"} {activeQuote.quote.amountInFormatted ?? activeQuote.quote.amountIn} USDC. The recipient receives {activeQuote.quote.amountOutFormatted ?? amount} USDC on {recipientNetwork}.</div>}
+        {flowState !== "review" && <div className="mt-5 flex items-center gap-3 rounded-xl bg-[#f5f8f2] p-4 text-sm"><CircleNotchIcon size={20} weight="bold" className="shrink-0 animate-spin text-[#628b34]" /><span>{flowState === "connecting" ? isNearSourceWallet ? "Connecting Meteor Wallet and checking funds…" : "Connecting Rabby and checking funds…" : flowState === "quoting" ? "Creating a NEAR intent route…" : flowState === "awaiting" ? isNearSourceWallet ? "Approve the exact quoted amount in Meteor Wallet…" : "Approve the exact quoted amount in Rabby…" : flowState === "confirming" ? "Settling the intent through NEAR testnet…" : flowState === "preparing" ? "Saving your payout request…" : "Review the issue below."}</span></div>}
         {activeTxHash && <a href={txExplorer(selectedWallet.network, activeTxHash)} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#456d24] underline underline-offset-2">View submitted transaction <ArrowSquareOutIcon size={14} /></a>}
         {flowError && <p role="alert" className="mt-4 text-sm text-[#a04b45]">{flowError}</p>}
-        {flowState === "review" && <button onClick={() => void continuePayment()} disabled={saving} className="action-button mt-6 w-full">{action === "send" ? "Create intent in Rabby" : "Create payout request"}</button>}
+        {flowState === "review" && <button onClick={() => void continuePayment()} disabled={saving} className="action-button mt-6 w-full">{action === "send" ? isNearSourceWallet ? "Connect Meteor & submit payment" : "Submit payment in Rabby" : "Create payout request"}</button>}
         {flowState === "failed" && <button onClick={() => setReviewOpen(false)} className="action-button mt-6 w-full">Close</button>}
         {flowState === "confirming" && <button onClick={() => setReviewOpen(false)} className="mt-5 w-full text-center text-xs font-semibold text-[#456d24] underline underline-offset-2">Continue in the background</button>}
       </>}

@@ -43,6 +43,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ ope
   if (operation.status !== "awaiting_wallet_approval") return NextResponse.json({ error: "This payment cannot be changed now." }, { status: 409 });
   const body = await request.json();
   if (body.action === "cancel") return NextResponse.json({ data: await updateOperation(operationId, "cancelled") });
+  if (body.action === "submitNear" && typeof body.nearTx === "string" && /^[1-9A-HJ-NP-Za-km-z]{40,100}$/.test(body.nearTx)) {
+    return NextResponse.json({ data: await updateOperation(operationId, "submitted", { nearTx: body.nearTx }) });
+  }
   if (body.action !== "submit" || typeof body.txHash !== "string" || !/^0x[a-fA-F0-9]{64}$/.test(body.txHash)) return NextResponse.json({ error: "A valid testnet transaction hash is required." }, { status: 400 });
   return NextResponse.json({ data: await updateOperation(operationId, "submitted", { txHash: body.txHash }) });
 }

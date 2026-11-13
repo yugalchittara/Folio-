@@ -23,7 +23,15 @@ export async function POST(request: Request) {
   const amount = Number(amountText);
   if (!recipient || !network || (!isBank && !recipientAddress) || !/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(amountText) || !Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: "Add a recipient, destination, and an amount with up to two decimal places." }, { status: 400 });
   if (isBank ? !["USD", "EUR", "GBP"].includes(network) : !["Base Sepolia", "Arbitrum Sepolia", "NEAR Testnet"].includes(network)) return NextResponse.json({ error: "Choose a supported destination." }, { status: 400 });
-  if (!isBank && body.intent === "send" && (!getTestnet(sourceWallet.network) || sourceWallet.network !== network || !/^0x[a-fA-F0-9]{40}$/.test(recipientAddress))) return NextResponse.json({ error: "Live payments require a valid EVM recipient on the same testnet as the source wallet." }, { status: 400 });
+  if (!isBank && body.intent === "send") {
+    if (sourceWallet.network === "NEAR Testnet") {
+      if (!/^[a-z0-9._-]+\.testnet$/i.test(sourceWallet.address) || !["Base Sepolia", "Arbitrum Sepolia"].includes(network) || !/^0x[a-fA-F0-9]{40}$/.test(recipientAddress)) {
+        return NextResponse.json({ error: "Meteor payments need a NEAR Testnet source wallet and a valid Base or Arbitrum Sepolia recipient." }, { status: 400 });
+      }
+    } else if (!getTestnet(sourceWallet.network) || sourceWallet.network !== network || !/^0x[a-fA-F0-9]{40}$/.test(recipientAddress)) {
+      return NextResponse.json({ error: "Live payments require a valid EVM recipient on the same testnet as the source wallet." }, { status: 400 });
+    }
+  }
   const status = isBank ? "review_ready" : body.intent === "send" ? "awaiting_wallet_approval" : "draft";
   return NextResponse.json({ data: await createOperation({ kind, recipient, recipient_address: recipientAddress, network, reference: String(body.reference ?? "").trim(), source_wallet_id: sourceWallet.id, bank_account_id: bankAccount?.id ?? null, amount: amount.toFixed(2), asset: "USDC", status }) }, { status: 201 });
 }
