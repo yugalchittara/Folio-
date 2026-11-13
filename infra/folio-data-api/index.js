@@ -5,6 +5,7 @@ const path = require("node:path");
 const { randomBytes } = require("node:crypto");
 const { Pool } = require("pg");
 
+const SERVICE_VERSION = "folio-data-api-v4";
 const schema = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
 let pool;
 
@@ -139,14 +140,14 @@ exports.handler = async (event) => {
     const body = event.body ? JSON.parse(event.body) : {};
     if (body.action === "health") {
       await database().query("SELECT 1");
-      return response(200, { ok: true });
+      return response(200, { ok: true, service: SERVICE_VERSION });
     }
     if (body.action === "migrate") {
       await database().query(schema);
-      return response(200, { ok: true, message: "Folio schema is ready." });
+      return response(200, { ok: true, service: SERVICE_VERSION, message: "Folio schema is ready." });
     }
     if (body.action === "data") {
-      return response(200, { data: await dataOperation(body.method, body.input) });
+      return response(200, { service: SERVICE_VERSION, data: await dataOperation(body.method, body.input) });
     }
     return response(400, { error: "Unsupported data operation" });
   } catch (error) {
