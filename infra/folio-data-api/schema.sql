@@ -65,8 +65,13 @@ CREATE TABLE IF NOT EXISTS business_integrations (
   status TEXT NOT NULL,
   key_prefix TEXT NOT NULL,
   webhook_url TEXT NOT NULL DEFAULT '',
+  merchant_name TEXT NOT NULL DEFAULT '',
+  merchant_wallet_id TEXT,
   created_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE business_integrations ADD COLUMN IF NOT EXISTS merchant_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE business_integrations ADD COLUMN IF NOT EXISTS merchant_wallet_id TEXT;
 
 CREATE TABLE IF NOT EXISTS business_operations (
   id TEXT PRIMARY KEY,

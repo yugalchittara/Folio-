@@ -3,9 +3,10 @@
 import { ArrowRightIcon, BankIcon, CheckIcon, CreditCardIcon, CurrencyCircleDollarIcon, ShoppingBagIcon } from "@phosphor-icons/react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type PaymentMethod = "card" | "bank" | "crypto";
+type Integration = { id: string; name: string; type: "online_checkout" | "pos_sdk"; merchant_name: string; merchant_wallet_id: string | null };
 
 const methods: Array<{ id: PaymentMethod; title: string; detail: string; available: boolean; icon: typeof CreditCardIcon }> = [
   { id: "card", title: "Credit or debit card", detail: "Visa, Mastercard and more", available: false, icon: CreditCardIcon },
@@ -18,6 +19,16 @@ export default function Shop() {
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [integration, setIntegration] = useState<Integration | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/integrations", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((json) => { if (active) setIntegration((json.data ?? []).find((item: Integration) => item.type === "online_checkout" && item.merchant_name && item.merchant_wallet_id) ?? null); })
+      .catch(() => { if (active) setError("Could not load this store's payment configuration."); });
+    return () => { active = false; };
+  }, []);
 
   const chooseMethod = (next: PaymentMethod) => {
     setMethod(next);
@@ -32,7 +43,7 @@ export default function Shop() {
       const response = await fetch("/api/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: "web", productId: "studio-mug-sand" }),
+        body: JSON.stringify({ channel: "web", productId: "studio-mug-sand", integrationId: integration?.id }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Unable to prepare crypto checkout.");
@@ -47,12 +58,12 @@ export default function Shop() {
   };
 
   return <main className="min-h-[100dvh] bg-[#F7F5EF] text-[#18372B]">
-    <div className="border-b border-[#DFE0D3] bg-[#163C2B] px-5 py-2 text-center text-[11px] font-medium tracking-[.16em] text-[#DCE8D4]">NOOK GOODS · ONLINE STORE</div>
+    <div className="border-b border-[#DFE0D3] bg-[#163C2B] px-5 py-2 text-center text-[11px] font-medium tracking-[.16em] text-[#DCE8D4]">{(integration?.merchant_name ?? "NOOK GOODS").toUpperCase()} · ONLINE STORE</div>
     <header className="border-b border-[#E1E1D6] bg-[#FBFAF6]">
       <div className="mx-auto flex max-w-[1220px] items-center justify-between px-5 py-4 sm:px-8">
         <a href="/shop" className="flex items-center gap-3">
           <Image src="/nook-goods-mark.svg" alt="Nook Goods mark" width={40} height={40} className="size-10 rounded-xl" />
-          <span className="font-serif text-2xl tracking-[-.05em]">nook goods<span className="text-[#8E9E79]">.</span></span>
+          <span className="font-serif text-2xl tracking-[-.05em]">{(integration?.merchant_name ?? "nook goods").toLowerCase()}<span className="text-[#8E9E79]">.</span></span>
         </a>
         <span className="inline-flex items-center gap-2 text-xs font-medium text-[#637568]"><ShoppingBagIcon size={19} weight="regular" /> Your bag <span className="grid size-5 place-items-center rounded-full bg-[#E3E9D7] text-[10px]">1</span></span>
       </div>

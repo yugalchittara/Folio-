@@ -95,8 +95,8 @@ async function dataOperation(method, input = {}) {
     }
     case "createIntegration": {
       const keyPrefix = `folio_sk_test_${randomBytes(5).toString("hex")}`;
-      const record = { id: id("int"), name: input.name, type: input.type, status: "active", key_prefix: keyPrefix, webhook_url: input.webhook_url ?? "", created_at: now() };
-      await db.query("INSERT INTO business_integrations (id,name,type,status,key_prefix,webhook_url,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)", [record.id, record.name, record.type, record.status, record.key_prefix, record.webhook_url, record.created_at]);
+      const record = { id: id("int"), name: input.name, type: input.type, status: "active", key_prefix: keyPrefix, webhook_url: input.webhook_url ?? "", merchant_name: input.merchant_name ?? "", merchant_wallet_id: input.merchant_wallet_id ?? null, created_at: now() };
+      await db.query("INSERT INTO business_integrations (id,name,type,status,key_prefix,webhook_url,merchant_name,merchant_wallet_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [record.id, record.name, record.type, record.status, record.key_prefix, record.webhook_url, record.merchant_name, record.merchant_wallet_id, record.created_at]);
       return { integration: record, secret: `${keyPrefix}_${randomBytes(10).toString("hex")}` };
     }
     case "createRequest": {

@@ -1,9 +1,9 @@
 import { addEvent, getRequest, listWallets, updateStatus } from "@/lib/data-store";
 import { screenSourceWallet } from "@/lib/compliance";
+import { tidepoolAssetForNetwork } from "@/lib/tidepool-assets";
 import { NextResponse } from "next/server";
 
 const tidepoolBase = process.env.ONECLICK_BASE_URL ?? "https://www.usetidepool.tech";
-const destinationAsset = "nep141:base-0x38d81431b9f76d9699af7517040d5221d9dea252.tp-omft.testnet";
 const supportedOrigins = new Set([
   "nep141:eth-0x2e6ad9e6d59bb4585ea0e6762c3b637dde29dad2.tp-omft.testnet",
   "nep141:arb-0x38d81431b9f76d9699af7517040d5221d9dea252.tp-omft.testnet",
@@ -17,8 +17,9 @@ export async function POST(request: Request, { params }: RouteContext<"/api/requ
   if (!payment) return NextResponse.json({ error: "Payment request not found" }, { status: 404 });
 
   const businessWallet = (await listWallets()).find((wallet) => payment.merchant_wallet_id ? wallet.id === payment.merchant_wallet_id : wallet.network === "Base Sepolia" && wallet.role === "Receiving");
-  const merchantRecipient = businessWallet?.address ?? process.env.TIDEPOOL_MERCHANT_BASE_SEPOLIA_ADDRESS;
-  if (!merchantRecipient) return NextResponse.json({ error: "Add a Base Sepolia receiving wallet in the Business Console before creating a live quote." }, { status: 503 });
+  const merchantRecipient = businessWallet?.address;
+  const destinationAsset = businessWallet ? tidepoolAssetForNetwork(businessWallet.network) : null;
+  if (!merchantRecipient || !destinationAsset) return NextResponse.json({ error: "Choose a supported receiving wallet in Folio before creating a live quote." }, { status: 503 });
 
   const body = await request.json();
   if (!supportedOrigins.has(body.originAsset) || typeof body.refundTo !== "string" || !body.refundTo.trim()) {

@@ -57,7 +57,8 @@ function initialize() {
   );
   CREATE TABLE IF NOT EXISTS business_integrations (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, status TEXT NOT NULL,
-    key_prefix TEXT NOT NULL, webhook_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+    key_prefix TEXT NOT NULL, webhook_url TEXT NOT NULL DEFAULT '', merchant_name TEXT NOT NULL DEFAULT '',
+    merchant_wallet_id TEXT, created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS operation_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, operation_id TEXT NOT NULL, type TEXT NOT NULL,
@@ -89,6 +90,9 @@ function initialize() {
   if (!requestColumns.has("channel")) sql("ALTER TABLE payment_requests ADD COLUMN channel TEXT DEFAULT 'pos'");
   if (!requestColumns.has("merchant_wallet_id")) sql("ALTER TABLE payment_requests ADD COLUMN merchant_wallet_id TEXT");
   if (!requestColumns.has("near_tx")) sql("ALTER TABLE payment_requests ADD COLUMN near_tx TEXT");
+  const integrationColumns = new Set((JSON.parse(execFileSync("/usr/bin/sqlite3", ["-json", databasePath, "PRAGMA table_info(business_integrations);"], { encoding: "utf8" }) || "[]") as Array<{ name: string }>).map((column) => column.name));
+  if (!integrationColumns.has("merchant_name")) sql("ALTER TABLE business_integrations ADD COLUMN merchant_name TEXT NOT NULL DEFAULT ''");
+  if (!integrationColumns.has("merchant_wallet_id")) sql("ALTER TABLE business_integrations ADD COLUMN merchant_wallet_id TEXT");
 }
 
 export type BusinessOperation = { id: string; kind: string; recipient: string; recipient_address: string | null; network: string | null; reference: string | null; source_wallet_id: string | null; bank_account_id: string | null; tx_hash: string | null; near_tx: string | null; destination_tx: string | null; deposit_address: string | null; route_status: string | null; provider_reference: string | null; amount: string; asset: string; status: string; created_at: string };
@@ -140,9 +144,9 @@ export function createOperation(input: Pick<BusinessOperation, "kind" | "recipie
 export type BusinessWallet = { id: string; label: string; address: string; network: string; role: string; note: string; created_at: string };
 export type BusinessContact = { id: string; name: string; type: string; destination: string; network: string; email: string; created_at: string };
 export type BusinessBankAccount = { id: string; nickname: string; bank_name: string; account_last_four: string; country: string; currency: string; created_at: string };
-export type BusinessIntegration = { id: string; name: string; type: "online_checkout" | "pos_sdk"; status: "active"; key_prefix: string; webhook_url: string; created_at: string };
+export type BusinessIntegration = { id: string; name: string; type: "online_checkout" | "pos_sdk"; status: "active"; key_prefix: string; webhook_url: string; merchant_name: string; merchant_wallet_id: string | null; created_at: string };
 export function listIntegrations() { initialize(); const output = execFileSync("/usr/bin/sqlite3", ["-json", databasePath, "SELECT * FROM business_integrations ORDER BY created_at DESC;"], { encoding: "utf8" }); return JSON.parse(output || "[]") as BusinessIntegration[]; }
-export function createIntegration(input: Pick<BusinessIntegration, "name" | "type" | "webhook_url">) { initialize(); const id = `int_${Date.now().toString(36)}`; const createdAt = new Date().toISOString(); const keyPrefix = `folio_sk_test_${Math.random().toString(36).slice(2, 10)}`; sql(`INSERT INTO business_integrations (id,name,type,status,key_prefix,webhook_url,created_at) VALUES ('${escape(id)}','${escape(input.name)}','${escape(input.type)}','active','${escape(keyPrefix)}','${escape(input.webhook_url)}','${escape(createdAt)}');`); return { integration: listIntegrations()[0], secret: `${keyPrefix}_${Math.random().toString(36).slice(2, 18)}` }; }
+export function createIntegration(input: Pick<BusinessIntegration, "name" | "type" | "webhook_url" | "merchant_name" | "merchant_wallet_id">) { initialize(); const id = `int_${Date.now().toString(36)}`; const createdAt = new Date().toISOString(); const keyPrefix = `folio_sk_test_${Math.random().toString(36).slice(2, 10)}`; sql(`INSERT INTO business_integrations (id,name,type,status,key_prefix,webhook_url,merchant_name,merchant_wallet_id,created_at) VALUES ('${escape(id)}','${escape(input.name)}','${escape(input.type)}','active','${escape(keyPrefix)}','${escape(input.webhook_url)}','${escape(input.merchant_name)}','${escape(input.merchant_wallet_id ?? "")}','${escape(createdAt)}');`); return { integration: listIntegrations()[0], secret: `${keyPrefix}_${Math.random().toString(36).slice(2, 18)}` }; }
 export function listBankAccounts() { initialize(); const output = execFileSync("/usr/bin/sqlite3", ["-json", databasePath, "SELECT * FROM business_bank_accounts ORDER BY created_at DESC;"], { encoding: "utf8" }); return JSON.parse(output || "[]") as BusinessBankAccount[]; }
 export function createBankAccount(input: Pick<BusinessBankAccount, "nickname" | "bank_name" | "account_last_four" | "country" | "currency">) { initialize(); const id = `bank_${Date.now().toString(36)}`; const createdAt = new Date().toISOString(); sql(`INSERT INTO business_bank_accounts (id,nickname,bank_name,account_last_four,country,currency,created_at) VALUES ('${escape(id)}','${escape(input.nickname)}','${escape(input.bank_name)}','${escape(input.account_last_four)}','${escape(input.country)}','${escape(input.currency)}','${escape(createdAt)}');`); return listBankAccounts()[0]; }
 export function listContacts() { initialize(); const output = execFileSync("/usr/bin/sqlite3", ["-json", databasePath, "SELECT * FROM business_contacts ORDER BY created_at DESC;"], { encoding: "utf8" }); return JSON.parse(output || "[]") as BusinessContact[]; }
