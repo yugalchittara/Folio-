@@ -9,6 +9,12 @@ type BankAccount = { id: string; nickname: string; bank_name: string; account_la
 type Balance = { balance: string; asset: string; network: string; explorerUrl: string; tokenAddress: string; chainId: string; decimals: number; refreshedAt: string };
 type Operation = { id: string; kind: string; recipient: string; amount: string; asset: string; status: string; network: string | null; source_wallet_id: string | null; tx_hash: string | null; near_tx: string | null; destination_tx: string | null; deposit_address: string | null; route_status: string | null; provider_reference: string | null; created_at: string };
 type IntentQuote = { quote: { depositAddress: string; amountIn: string; amountInFormatted?: string; amountOutFormatted?: string } };
+
+// Tidepool uses a one-time NEAR implicit account (a 64-character hex account ID)
+// for NEAR-origin deposits. Named testnet accounts such as `solver.testnet` are
+// valid too, so do not limit a deposit receiver to the `.testnet` suffix.
+const isValidNearAccountId = (accountId: string) =>
+  /^(?:[0-9a-f]{64}|[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?)$/i.test(accountId);
 type Action = "send" | "bank";
 type RecipientType = "Supplier" | "Team member";
 type MeteorWallet = {
@@ -259,7 +265,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
         const quoteJson = await quoteResponse.json();
         if (!quoteResponse.ok || !quoteJson.data?.quote?.depositAddress) throw new Error(quoteJson.error ?? "Unable to create a NEAR intent route.");
         const quote = quoteJson.data as IntentQuote;
-        if (!/^[a-z0-9._-]+\.testnet$/i.test(quote.quote.depositAddress)) throw new Error("The NEAR route did not return a valid NEAR Testnet deposit account.");
+        if (!isValidNearAccountId(quote.quote.depositAddress)) throw new Error("The routing provider returned an invalid NEAR deposit account.");
         setActiveQuote(quote);
         created = { ...created, deposit_address: quote.quote.depositAddress, route_status: "QUOTE_READY" };
         setActiveOperation(created);
