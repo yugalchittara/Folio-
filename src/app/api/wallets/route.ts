@@ -1,4 +1,4 @@
-import { createWallet, listWallets } from "@/lib/data-store";
+import { createWallet, deleteWallet, listWallets } from "@/lib/data-store";
 import { connection, NextResponse } from "next/server";
 
 const serviceError = (error: unknown) => NextResponse.json(
@@ -23,5 +23,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ data: await createWallet({ label: String(body.label), address: String(body.address), network: String(body.network), role: String(body.role), note: String(body.note ?? "") }) }, { status: 201 });
   } catch (error) {
     return serviceError(error);
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "wallet id is required" }, { status: 400 });
+    const removed = await deleteWallet(id);
+    if (!removed) return NextResponse.json({ error: "Wallet not found" }, { status: 404 });
+    return NextResponse.json({ data: removed });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not remove wallet.";
+    const status = message.includes("used by") ? 409 : 503;
+    return NextResponse.json({ error: message }, { status });
   }
 }

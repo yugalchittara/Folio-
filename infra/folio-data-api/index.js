@@ -84,6 +84,11 @@ async function dataOperation(method, input = {}) {
       await db.query("INSERT INTO business_wallets (id,label,address,network,role,note,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)", [record.id, record.label, record.address, record.network, record.role, record.note ?? "", record.created_at]);
       return record;
     }
+    case "deleteWallet": {
+      const linked = asOne(await db.query("SELECT name FROM business_integrations WHERE merchant_wallet_id=$1 LIMIT 1", [input.id]));
+      if (linked) throw new Error(`This wallet is used by ${linked.name}. Change that integration before removing it.`);
+      return asOne(await db.query("DELETE FROM business_wallets WHERE id=$1 RETURNING *", [input.id]));
+    }
     case "createContact": {
       const record = { id: id("contact"), ...input, created_at: now() };
       await db.query("INSERT INTO business_contacts (id,name,type,destination,network,email,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)", [record.id, record.name, record.type, record.destination, record.network, record.email ?? "", record.created_at]);

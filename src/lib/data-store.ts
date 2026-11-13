@@ -5,7 +5,7 @@ export type { PaymentRequest, BusinessOperation, BusinessWallet, BusinessContact
 type RemoteMethod =
   | "listOperations" | "getOperation" | "updateOperation" | "addOperationEvent" | "getOperationEvents"
   | "createOperation" | "listIntegrations" | "createIntegration" | "listBankAccounts"
-  | "createBankAccount" | "listContacts" | "createContact" | "listWallets" | "createWallet"
+  | "createBankAccount" | "listContacts" | "createContact" | "listWallets" | "createWallet" | "deleteWallet"
   | "getRequest" | "listRequests" | "createRequest" | "updateStatus" | "addEvent"
   | "getEvents" | "listComplianceRecords";
 
@@ -42,6 +42,7 @@ export async function listContacts() { return cloudEnabled() ? remote<local.Busi
 export async function createContact(input: Parameters<typeof local.createContact>[0]) { return cloudEnabled() ? remote<local.BusinessContact>("createContact", input) : local.createContact(input); }
 export async function listWallets() { return cloudEnabled() ? remote<local.BusinessWallet[]>("listWallets") : local.listWallets(); }
 export async function createWallet(input: Parameters<typeof local.createWallet>[0]) { return cloudEnabled() ? remote<local.BusinessWallet>("createWallet", input) : local.createWallet(input); }
+export async function deleteWallet(id: string) { return cloudEnabled() ? remote<local.BusinessWallet | null>("deleteWallet", { id }) : local.deleteWallet(id); }
 
 export async function getRequest(id: string) { return cloudEnabled() ? remote<local.PaymentRequest | null>("getRequest", { id }) : local.getRequest(id); }
 export async function listRequests() { return cloudEnabled() ? remote<local.PaymentRequest[]>("listRequests") : local.listRequests(); }
