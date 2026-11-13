@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 const allowed = new Set(["v0/tokens", "v0/quote", "v0/status", "v0/deposit/submit"]);
 
@@ -15,5 +15,5 @@ async function forward(request: Request, path: string[]) {
   return new NextResponse(await upstream.text(), { status: upstream.status, headers: { "Content-Type": upstream.headers.get("Content-Type") ?? "application/json" } });
 }
 
-export async function GET(request: Request, { params }: RouteContext<"/api/oneclick/[...path]">) { const { path } = await params; return forward(request, path); }
+export async function GET(request: Request, { params }: RouteContext<"/api/oneclick/[...path]">) { await connection(); const { path } = await params; return forward(request, path); }
 export async function POST(request: Request, { params }: RouteContext<"/api/oneclick/[...path]">) { const { path } = await params; return forward(request, path); }

@@ -1,7 +1,8 @@
 import { getRequest, listComplianceRecords, listWallets } from "@/lib/local-db";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
-export function GET() {
+export async function GET() {
+  await connection();
   const wallets = listWallets();
   const data = listComplianceRecords().map((record) => {
     const payment = getRequest(record.request_id);

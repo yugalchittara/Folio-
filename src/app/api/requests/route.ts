@@ -1,8 +1,8 @@
 import { createRequest, listRequests, listWallets } from "@/lib/local-db";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-export function GET() { return NextResponse.json({ data: listRequests() }); }
+export async function GET() { await connection(); return NextResponse.json({ data: listRequests() }); }
 
 export async function POST(request: Request) {
   const body = await request.json();

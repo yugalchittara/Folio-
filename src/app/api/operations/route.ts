@@ -1,8 +1,9 @@
 import { createOperation, listBankAccounts, listOperations, listWallets } from "@/lib/local-db";
 import { getTestnet } from "@/lib/testnet-usdc";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 export async function GET() {
+  await connection();
   return NextResponse.json({ data: listOperations() });
 }
 

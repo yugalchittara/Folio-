@@ -1,7 +1,7 @@
 import { createContact, listContacts } from "@/lib/local-db";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
-export function GET() { return NextResponse.json({ data: listContacts() }); }
+export async function GET() { await connection(); return NextResponse.json({ data: listContacts() }); }
 
 export async function POST(request: Request) {
   const body = await request.json();

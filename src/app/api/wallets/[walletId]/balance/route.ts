@@ -1,8 +1,9 @@
 import { listWallets } from "@/lib/local-db";
 import { formatBaseUnits, getTestnet, rpcCall } from "@/lib/testnet-usdc";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ walletId: string }> }) {
+  await connection();
   const { walletId } = await params;
   const wallet = listWallets().find((item) => item.id === walletId);
   if (!wallet) return NextResponse.json({ error: "Wallet not found." }, { status: 404 });

@@ -1,9 +1,10 @@
 import { addOperationEvent, getOperation, updateOperation } from "@/lib/local-db";
 import { extractTidepoolTransactions } from "@/lib/tidepool-transactions";
 import { tidepoolBaseUrl, tidepoolHeaders } from "@/lib/tidepool-assets";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ operationId: string }> }) {
+  await connection();
   const { operationId } = await params;
   const operation = getOperation(operationId);
   if (!operation) return NextResponse.json({ error: "Payment not found." }, { status: 404 });

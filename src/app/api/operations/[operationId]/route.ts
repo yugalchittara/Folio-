@@ -1,11 +1,12 @@
 import { getOperation, listWallets, updateOperation } from "@/lib/local-db";
 import { getTestnet, rpcCall, toBaseUnits, transferCalldata } from "@/lib/testnet-usdc";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 type ChainTransaction = { from: string; to: string | null; input: string };
 type ChainReceipt = { status: string };
 
 export async function GET(_request: Request, { params }: { params: Promise<{ operationId: string }> }) {
+  await connection();
   const { operationId } = await params;
   let operation = getOperation(operationId);
   if (!operation) return NextResponse.json({ error: "Payment not found." }, { status: 404 });

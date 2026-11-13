@@ -1,10 +1,11 @@
 import { addEvent, getRequest, updateStatus } from "@/lib/local-db";
 import { extractTidepoolTransactions } from "@/lib/tidepool-transactions";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 
 const tidepoolBase = process.env.ONECLICK_BASE_URL ?? "https://www.usetidepool.tech";
 
 export async function GET(request: Request, { params }: RouteContext<"/api/requests/[requestId]/tidepool/status">) {
+  await connection();
   const { requestId } = await params;
   if (!getRequest(requestId)) return NextResponse.json({ error: "Payment request not found" }, { status: 404 });
   const depositAddress = new URL(request.url).searchParams.get("depositAddress");
