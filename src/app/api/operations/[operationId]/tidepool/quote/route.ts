@@ -1,14 +1,14 @@
-import { addOperationEvent, getOperation, listWallets, updateOperation } from "@/lib/local-db";
+import { addOperationEvent, getOperation, listWallets, updateOperation } from "@/lib/data-store";
 import { tidepoolAssetForNetwork, tidepoolBaseUrl, tidepoolHeaders } from "@/lib/tidepool-assets";
 import { NextResponse } from "next/server";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ operationId: string }> }) {
   const { operationId } = await params;
-  const operation = getOperation(operationId);
+  const operation = await getOperation(operationId);
   if (!operation) return NextResponse.json({ error: "Payment not found." }, { status: 404 });
   if (operation.status !== "awaiting_wallet_approval") return NextResponse.json({ error: "This payment cannot be routed now." }, { status: 409 });
 
-  const sourceWallet = listWallets().find((wallet) => wallet.id === operation.source_wallet_id);
+  const sourceWallet = (await listWallets()).find((wallet) => wallet.id === operation.source_wallet_id);
   const originAsset = sourceWallet && tidepoolAssetForNetwork(sourceWallet.network);
   const destinationAsset = tidepoolAssetForNetwork(operation.network ?? "");
   if (!sourceWallet || !originAsset || !destinationAsset || !operation.recipient_address) {
@@ -34,7 +34,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ op
   const payload = await upstream.json();
   if (!upstream.ok) return NextResponse.json({ error: payload.message ?? "Tidepool could not create an intent quote.", details: payload }, { status: upstream.status });
 
-  updateOperation(operationId, "awaiting_wallet_approval", { depositAddress: payload.quote?.depositAddress, routeStatus: "QUOTE_READY", providerReference: payload.correlationId });
-  addOperationEvent(operationId, "tidepool.quote_ready", { correlationId: payload.correlationId, depositAddress: payload.quote?.depositAddress, amountIn: payload.quote?.amountIn, amountInFormatted: payload.quote?.amountInFormatted, amountOutFormatted: payload.quote?.amountOutFormatted, originNetwork: sourceWallet.network, destinationNetwork: operation.network, deadline: payload.quote?.deadline ?? deadline });
+  await updateOperation(operationId, "awaiting_wallet_approval", { depositAddress: payload.quote?.depositAddress, routeStatus: "QUOTE_READY", providerReference: payload.correlationId });
+  await addOperationEvent(operationId, "tidepool.quote_ready", { correlationId: payload.correlationId, depositAddress: payload.quote?.depositAddress, amountIn: payload.quote?.amountIn, amountInFormatted: payload.quote?.amountInFormatted, amountOutFormatted: payload.quote?.amountOutFormatted, originNetwork: sourceWallet.network, destinationNetwork: operation.network, deadline: payload.quote?.deadline ?? deadline });
   return NextResponse.json({ data: payload });
 }

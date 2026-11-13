@@ -1,11 +1,12 @@
-import { getRequest, listComplianceRecords, listWallets } from "@/lib/local-db";
+import { getRequest, listComplianceRecords, listWallets } from "@/lib/data-store";
 import { connection, NextResponse } from "next/server";
 
 export async function GET() {
   await connection();
-  const wallets = listWallets();
-  const data = listComplianceRecords().map((record) => {
-    const payment = getRequest(record.request_id);
+  const wallets = await listWallets();
+  const records = await listComplianceRecords();
+  const data = await Promise.all(records.map(async (record) => {
+    const payment = await getRequest(record.request_id);
     const receivingWallet = wallets.find((wallet) => wallet.id === payment?.merchant_wallet_id)
       ?? wallets.find((wallet) => wallet.network === "Base Sepolia" && wallet.role === "Receiving");
     return {
@@ -18,6 +19,6 @@ export async function GET() {
       destinationTx: payment?.destination_tx ?? null,
       merchantWallet: receivingWallet ? { label: receivingWallet.label, address: receivingWallet.address, network: receivingWallet.network } : null,
     };
-  });
+  }));
   return NextResponse.json({ data });
 }

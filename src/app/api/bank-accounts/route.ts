@@ -1,9 +1,9 @@
-import { createBankAccount, listBankAccounts } from "@/lib/local-db";
+import { createBankAccount, listBankAccounts } from "@/lib/data-store";
 import { connection, NextResponse } from "next/server";
 
 export async function GET() {
   await connection();
-  return NextResponse.json({ data: listBankAccounts() });
+  return NextResponse.json({ data: await listBankAccounts() });
 }
 
 export async function POST(request: Request) {
@@ -16,5 +16,5 @@ export async function POST(request: Request) {
   if (!nickname || !bankName || !/^\d{4}$/.test(lastFour) || !/^[A-Z]{2}$/.test(country) || !["USD", "EUR", "GBP"].includes(currency)) {
     return NextResponse.json({ error: "Add a nickname, bank name, country code, currency, and the account's last four digits." }, { status: 400 });
   }
-  return NextResponse.json({ data: createBankAccount({ nickname, bank_name: bankName, account_last_four: lastFour, country, currency }) }, { status: 201 });
+  return NextResponse.json({ data: await createBankAccount({ nickname, bank_name: bankName, account_last_four: lastFour, country, currency }) }, { status: 201 });
 }

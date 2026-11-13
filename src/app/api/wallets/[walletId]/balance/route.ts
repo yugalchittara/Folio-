@@ -1,11 +1,11 @@
-import { listWallets } from "@/lib/local-db";
+import { listWallets } from "@/lib/data-store";
 import { formatBaseUnits, getTestnet, rpcCall } from "@/lib/testnet-usdc";
 import { connection, NextResponse } from "next/server";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ walletId: string }> }) {
   await connection();
   const { walletId } = await params;
-  const wallet = listWallets().find((item) => item.id === walletId);
+  const wallet = (await listWallets()).find((item) => item.id === walletId);
   if (!wallet) return NextResponse.json({ error: "Wallet not found." }, { status: 404 });
   const network = getTestnet(wallet.network);
   if (!network) return NextResponse.json({ error: "Live USDC balance is not available for this network yet." }, { status: 422 });

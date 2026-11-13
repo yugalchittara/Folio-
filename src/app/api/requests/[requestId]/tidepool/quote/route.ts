@@ -1,4 +1,4 @@
-import { addEvent, getRequest, listWallets, updateStatus } from "@/lib/local-db";
+import { addEvent, getRequest, listWallets, updateStatus } from "@/lib/data-store";
 import { screenSourceWallet } from "@/lib/compliance";
 import { NextResponse } from "next/server";
 
@@ -13,10 +13,10 @@ const supportedOrigins = new Set([
 
 export async function POST(request: Request, { params }: RouteContext<"/api/requests/[requestId]/tidepool/quote">) {
   const { requestId } = await params;
-  const payment = getRequest(requestId);
+  const payment = await getRequest(requestId);
   if (!payment) return NextResponse.json({ error: "Payment request not found" }, { status: 404 });
 
-  const businessWallet = listWallets().find((wallet) => payment.merchant_wallet_id ? wallet.id === payment.merchant_wallet_id : wallet.network === "Base Sepolia" && wallet.role === "Receiving");
+  const businessWallet = (await listWallets()).find((wallet) => payment.merchant_wallet_id ? wallet.id === payment.merchant_wallet_id : wallet.network === "Base Sepolia" && wallet.role === "Receiving");
   const merchantRecipient = businessWallet?.address ?? process.env.TIDEPOOL_MERCHANT_BASE_SEPOLIA_ADDRESS;
   if (!merchantRecipient) return NextResponse.json({ error: "Add a Base Sepolia receiving wallet in the Business Console before creating a live quote." }, { status: 503 });
 
@@ -31,13 +31,13 @@ export async function POST(request: Request, { params }: RouteContext<"/api/requ
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Compliance screening is unavailable." }, { status: 503 });
   }
-  addEvent(requestId, "compliance.source_wallet_screened", { address: body.refundTo.trim(), chain: body.sourceChain, ...compliance });
+  await addEvent(requestId, "compliance.source_wallet_screened", { address: body.refundTo.trim(), chain: body.sourceChain, ...compliance });
   if (compliance.decision === "blocked") {
-    updateStatus(requestId, "wallet_check_failed", { sourceChain: body.sourceChain });
+    await updateStatus(requestId, "wallet_check_failed", { sourceChain: body.sourceChain });
     return NextResponse.json({ error: "This wallet cannot be used for this payment.", compliance }, { status: 403 });
   }
 
-  updateStatus(requestId, "wallet_verified", { sourceChain: body.sourceChain });
+  await updateStatus(requestId, "wallet_verified", { sourceChain: body.sourceChain });
 
   const amount = Math.round(Number(payment.amount) * 1_000_000).toString();
   const deadline = new Date(Date.now() + 12 * 60 * 1000).toISOString();
@@ -62,7 +62,7 @@ export async function POST(request: Request, { params }: RouteContext<"/api/requ
   const payload = await upstream.json();
   if (!upstream.ok) return NextResponse.json({ error: payload.message ?? "Tidepool could not create a quote.", details: payload }, { status: upstream.status });
 
-  updateStatus(requestId, "quote_ready", { sourceChain: body.sourceChain });
-  addEvent(requestId, "tidepool.quote_ready", { correlationId: payload.correlationId, originAsset: body.originAsset, depositAddress: payload.quote?.depositAddress, amountIn: payload.quote?.amountIn, amountInFormatted: payload.quote?.amountInFormatted, deadline: payload.quote?.deadline ?? deadline, merchantRecipient, merchantWalletLabel: businessWallet?.label ?? "Environment fallback" });
+  await updateStatus(requestId, "quote_ready", { sourceChain: body.sourceChain });
+  await addEvent(requestId, "tidepool.quote_ready", { correlationId: payload.correlationId, originAsset: body.originAsset, depositAddress: payload.quote?.depositAddress, amountIn: payload.quote?.amountIn, amountInFormatted: payload.quote?.amountInFormatted, deadline: payload.quote?.deadline ?? deadline, merchantRecipient, merchantWalletLabel: businessWallet?.label ?? "Environment fallback" });
   return NextResponse.json({ data: payload, compliance });
 }

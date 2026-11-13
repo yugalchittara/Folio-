@@ -1,4 +1,4 @@
-import { addEvent, getRequest, updateStatus } from "@/lib/local-db";
+import { addEvent, getRequest, updateStatus } from "@/lib/data-store";
 import { extractTidepoolTransactions } from "@/lib/tidepool-transactions";
 import { connection, NextResponse } from "next/server";
 
@@ -7,7 +7,7 @@ const tidepoolBase = process.env.ONECLICK_BASE_URL ?? "https://www.usetidepool.t
 export async function GET(request: Request, { params }: RouteContext<"/api/requests/[requestId]/tidepool/status">) {
   await connection();
   const { requestId } = await params;
-  if (!getRequest(requestId)) return NextResponse.json({ error: "Payment request not found" }, { status: 404 });
+  if (!(await getRequest(requestId))) return NextResponse.json({ error: "Payment request not found" }, { status: 404 });
   const depositAddress = new URL(request.url).searchParams.get("depositAddress");
   if (!depositAddress) return NextResponse.json({ error: "depositAddress is required" }, { status: 400 });
 
@@ -19,11 +19,11 @@ export async function GET(request: Request, { params }: RouteContext<"/api/reque
 
   const status = payload.status ?? payload.state ?? "pending_deposit";
   const transactions = extractTidepoolTransactions(payload);
-  updateStatus(requestId, String(status).toLowerCase(), {
+  await updateStatus(requestId, String(status).toLowerCase(), {
     sourceTx: transactions.sourceTx ?? undefined,
     nearTx: transactions.nearTx ?? undefined,
     destinationTx: transactions.destinationTx ?? undefined,
   });
-  addEvent(requestId, "tidepool.status", { status, ...transactions, depositAddress });
+  await addEvent(requestId, "tidepool.status", { status, ...transactions, depositAddress });
   return NextResponse.json({ data: payload });
 }
