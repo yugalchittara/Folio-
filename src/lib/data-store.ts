@@ -4,7 +4,7 @@ export type { PaymentRequest, BusinessOperation, BusinessWallet, BusinessContact
 
 type RemoteMethod =
   | "listOperations" | "getOperation" | "updateOperation" | "addOperationEvent" | "getOperationEvents"
-  | "createOperation" | "listIntegrations" | "createIntegration" | "listBankAccounts"
+  | "createOperation" | "listIntegrations" | "createIntegration" | "deleteIntegration" | "listBankAccounts"
   | "createBankAccount" | "listContacts" | "createContact" | "listWallets" | "createWallet" | "deleteWallet"
   | "getRequest" | "listRequests" | "createRequest" | "updateStatus" | "addEvent"
   | "getEvents" | "listComplianceRecords";
@@ -36,6 +36,7 @@ export async function createOperation(input: Parameters<typeof local.createOpera
 
 export async function listIntegrations() { return cloudEnabled() ? remote<local.BusinessIntegration[]>("listIntegrations") : local.listIntegrations(); }
 export async function createIntegration(input: Parameters<typeof local.createIntegration>[0]) { return cloudEnabled() ? remote<ReturnType<typeof local.createIntegration>>("createIntegration", input) : local.createIntegration(input); }
+export async function deleteIntegration(id: string) { return cloudEnabled() ? remote<local.BusinessIntegration | null>("deleteIntegration", { id }) : local.deleteIntegration(id); }
 export async function listBankAccounts() { return cloudEnabled() ? remote<local.BusinessBankAccount[]>("listBankAccounts") : local.listBankAccounts(); }
 export async function createBankAccount(input: Parameters<typeof local.createBankAccount>[0]) { return cloudEnabled() ? remote<local.BusinessBankAccount>("createBankAccount", input) : local.createBankAccount(input); }
 export async function listContacts() { return cloudEnabled() ? remote<local.BusinessContact[]>("listContacts") : local.listContacts(); }

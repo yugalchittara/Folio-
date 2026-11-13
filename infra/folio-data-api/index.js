@@ -105,6 +105,7 @@ async function dataOperation(method, input = {}) {
       await db.query("INSERT INTO business_integrations (id,name,type,status,key_prefix,webhook_url,merchant_name,merchant_wallet_id,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)", [record.id, record.name, record.type, record.status, record.key_prefix, record.webhook_url, record.merchant_name, record.merchant_wallet_id, record.created_at]);
       return { integration: record, secret: `${keyPrefix}_${randomBytes(10).toString("hex")}` };
     }
+    case "deleteIntegration": return asOne(await db.query("DELETE FROM business_integrations WHERE id=$1 RETURNING *", [input.id]));
     case "createRequest": {
       const record = { ...input, status: "awaiting_payment", hosted_url: `/pay/${input.id}`, created_at: now(), channel: input.channel ?? "pos", merchant_wallet_id: input.merchant_wallet_id ?? null };
       await db.query("INSERT INTO payment_requests (id,business_name,reference_id,description,amount,settlement_asset,settlement_chain,status,hosted_url,created_at,channel,merchant_wallet_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", [record.id, record.business_name, record.reference_id, record.description, record.amount, record.settlement_asset, record.settlement_chain, record.status, record.hosted_url, record.created_at, record.channel, record.merchant_wallet_id]);
