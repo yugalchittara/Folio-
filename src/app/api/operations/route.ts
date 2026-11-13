@@ -2,6 +2,8 @@ import { createOperation, listBankAccounts, listOperations, listWallets } from "
 import { getTestnet } from "@/lib/testnet-usdc";
 import { connection, NextResponse } from "next/server";
 
+const normalizeTestnetNetwork = (network: string) => network === "Base" ? "Base Sepolia" : network === "Arbitrum" ? "Arbitrum Sepolia" : network;
+
 export async function GET() {
   await connection();
   return NextResponse.json({ data: await listOperations() });
@@ -18,7 +20,7 @@ export async function POST(request: Request) {
   if (isBank && !bankAccount) return NextResponse.json({ error: "Choose a saved bank account." }, { status: 400 });
   const recipient = isBank ? bankAccount!.nickname : String(body.recipient ?? "").trim();
   const recipientAddress = String(body.recipientAddress ?? "").trim();
-  const network = isBank ? bankAccount!.currency : String(body.network ?? "").trim();
+  const network = isBank ? bankAccount!.currency : normalizeTestnetNetwork(String(body.network ?? "").trim());
   const amountText = String(body.amount ?? "");
   const amount = Number(amountText);
   if (!recipient || !network || (!isBank && !recipientAddress) || !/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(amountText) || !Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: "Add a recipient, destination, and an amount with up to two decimal places." }, { status: 400 });

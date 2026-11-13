@@ -19,6 +19,7 @@ type MeteorWallet = {
 
 const shortAddress = (address: string) => address.length > 16 ? `${address.slice(0, 8)}…${address.slice(-6)}` : address;
 const isEvmAddress = (address: string) => /^0x[a-fA-F0-9]{40}$/.test(address);
+const normalizeTestnetNetwork = (network: string) => network === "Base" ? "Base Sepolia" : network === "Arbitrum" ? "Arbitrum Sepolia" : network;
 const txExplorer = (network: string, hash: string) => `${network === "Arbitrum Sepolia" ? "https://sepolia.arbiscan.io" : "https://sepolia.basescan.org"}/tx/${hash}`;
 const tokenUnits = (amount: string, decimals: number) => { const [whole, fraction = ""] = amount.split("."); return BigInt(whole) * BigInt(10) ** BigInt(decimals) + BigInt(fraction.padEnd(decimals, "0") || "0"); };
 const operationStatus = (status: string) => ({ confirmed: "Settled", routing: "Swapping through NEAR", submitted: "Confirming", awaiting_wallet_approval: "Awaiting wallet", review_ready: "Ready for review", awaiting_bank_connection: "Awaiting bank connection", simulation_ready: "Legacy demo", simulated_completed: "Legacy demo only", verification_failed: "Could not verify" }[status] ?? status.replaceAll("_", " "));
@@ -148,7 +149,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
   const selectContact = (id: string) => {
     setContactId(id);
     const match = relevantContacts.find((contact) => contact.id === id);
-    if (match) { setRecipient(match.name); setAddress(match.destination); setRecipientNetwork(match.network); }
+    if (match) { setRecipient(match.name); setAddress(match.destination); setRecipientNetwork(normalizeTestnetNetwork(match.network)); setFormError(""); }
   };
 
   const switchAction = (next: Action) => {
@@ -181,7 +182,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
     if (action === "send" && !recipient.trim()) return setFormError("Add a recipient.");
     if (action === "send") {
       if (!["Base Sepolia", "Arbitrum Sepolia", "NEAR Testnet"].includes(selectedWallet.network)) return setFormError("Choose a supported business wallet.");
-      if (!["Base Sepolia", "Arbitrum Sepolia"].includes(recipientNetwork)) return setFormError("Choose Base Sepolia or Arbitrum Sepolia for the recipient.");
+      if (!["Base Sepolia", "Arbitrum Sepolia"].includes(normalizeTestnetNetwork(recipientNetwork))) return setFormError("Choose Base Sepolia or Arbitrum Sepolia for the recipient.");
       if (!isEvmAddress(address.trim())) return setFormError("Enter a valid 0x recipient wallet address.");
       if (address.trim().toLowerCase() === selectedWallet.address.toLowerCase()) return setFormError("Choose a recipient address different from the source wallet.");
     }
@@ -198,7 +199,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
         kind: action === "bank" ? "fiat_offramp" : recipientType === "Supplier" ? "supplier_payment" : "team_payment",
         recipient: action === "bank" ? selectedBankAccount?.nickname : recipient.trim(),
         recipientAddress: action === "bank" ? "" : address.trim(),
-        network: action === "bank" ? selectedBankAccount?.currency : recipientNetwork,
+        network: action === "bank" ? selectedBankAccount?.currency : normalizeTestnetNetwork(recipientNetwork),
         bankAccountId: action === "bank" ? selectedBankAccount?.id : undefined,
         reference: reference.trim(),
         amount: Number(amount).toFixed(2),
@@ -333,9 +334,9 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
       {action === "send" && <div><p className="text-sm font-semibold">Who are you paying?</p><div className="mt-2 flex flex-wrap gap-2">{(["Supplier", "Team member"] as RecipientType[]).map((type) => <button key={type} onClick={() => { setRecipientType(type); setContactId(""); setRecipient(""); setAddress(""); }} aria-pressed={recipientType === type} className={`rounded-full border px-4 py-2 text-sm font-medium ${recipientType === type ? "border-[#9fc76b] bg-[#f4ffdf] text-[#31531d]" : "border-[#dfe6dc] bg-white text-[#61705f]"}`}>{type}</button>)}</div></div>}
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         {action === "send" && relevantContacts.length > 0 && <label className="field sm:col-span-2"><span>Saved contact (optional)</span><select value={contactId} onChange={(event) => selectContact(event.target.value)}><option value="">Enter a new recipient</option>{relevantContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}</select></label>}
-        {action === "send" ? <label className="field"><span>Recipient name</span><input value={recipient} onChange={(event) => { setRecipient(event.target.value); setContactId(""); }} placeholder="Name or business" /></label> : <div className="sm:col-span-2"><label className="field"><span>Bank destination</span><select value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)}><option value="">Choose a saved bank account</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.nickname} · {account.bank_name} ••••{account.account_last_four} · {account.currency}</option>)}</select></label><button onClick={() => { setBankFormError(""); setBankModalOpen(true); }} className="mt-2 text-sm font-semibold text-[#456d24] underline underline-offset-2">Add bank account</button>{selectedBankAccount && <p className="mt-2 text-xs text-[#718070]">{selectedBankAccount.bank_name} · ••••{selectedBankAccount.account_last_four} · {selectedBankAccount.country} · {selectedBankAccount.currency}</p>}</div>}
+        {action === "send" ? <label className="field"><span>Recipient name</span><input value={recipient} onChange={(event) => { setRecipient(event.target.value); setContactId(""); setFormError(""); }} placeholder="Name or business" /></label> : <div className="sm:col-span-2"><label className="field"><span>Bank destination</span><select value={bankAccountId} onChange={(event) => setBankAccountId(event.target.value)}><option value="">Choose a saved bank account</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.nickname} · {account.bank_name} ••••{account.account_last_four} · {account.currency}</option>)}</select></label><button onClick={() => { setBankFormError(""); setBankModalOpen(true); }} className="mt-2 text-sm font-semibold text-[#456d24] underline underline-offset-2">Add bank account</button>{selectedBankAccount && <p className="mt-2 text-xs text-[#718070]">{selectedBankAccount.bank_name} · ••••{selectedBankAccount.account_last_four} · {selectedBankAccount.country} · {selectedBankAccount.currency}</p>}</div>}
         <label className="field"><span>Amount (USDC)</span><input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" /></label>
-        {action === "send" && <><label className="field"><span>Recipient wallet address</span><input value={address} onChange={(event) => { setAddress(event.target.value); setContactId(""); }} placeholder="0x…" /></label><label className="field"><span>Recipient network</span><select value={recipientNetwork} onChange={(event) => setRecipientNetwork(event.target.value)}><option>Base Sepolia</option><option>Arbitrum Sepolia</option></select></label></>}
+        {action === "send" && <><label className="field"><span>Recipient wallet address</span><input value={address} onChange={(event) => { setAddress(event.target.value); setContactId(""); setFormError(""); }} placeholder="0x…" /></label><label className="field"><span>Recipient network</span><select value={normalizeTestnetNetwork(recipientNetwork)} onChange={(event) => { setRecipientNetwork(event.target.value); setFormError(""); }}><option>Base Sepolia</option><option>Arbitrum Sepolia</option></select></label></>}
         <label className="field sm:col-span-2"><span>{action === "send" ? "Invoice or payment reference (optional)" : "Withdrawal note (optional)"}</span><input value={reference} onChange={(event) => setReference(event.target.value)} placeholder={action === "send" ? "Invoice or reason for payment" : "What is this withdrawal for?"} /></label>
       </div>
       {formError && <p role="alert" className="mt-4 text-sm text-[#a04b45]">{formError}</p>}
