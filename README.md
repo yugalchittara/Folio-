@@ -10,6 +10,8 @@
 
 Stablecoins can move globally, but a business still has to stitch together a checkout, wallet selection, transaction monitoring, reconciliation, supplier payouts, and off-ramp operations. Each additional chain adds another integration and another operational blind spot.
 
+**Our thesis:** stablecoin acceptance is more valuable when a business can use what it receives. Conversion and operational work can erode that value when suppliers, teams, or bank payouts need another asset or rail. Folio therefore connects checkout to balances, cross-chain expenses, and a future fiat payout path. This framing aligns with the [IMF's analysis of integration and conversion costs](https://www.elibrary.imf.org/view/journals/087/2026/021/article-A001-en.xml) and [Visa's account of business payment uses](https://corporate.visa.com/en/sites/visa-perspectives/press-releases/stablecoins-gain-traction-business-payments.html).
+
 Folio makes the business operate from one place while customers and payees use the assets and networks available to them.
 
 ## A quick reviewer path
