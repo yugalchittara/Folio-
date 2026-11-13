@@ -5,7 +5,10 @@ import { DownloadSimpleIcon, LinkIcon } from "@phosphor-icons/react";
 type Request = { id: string; description: string; amount: string; status: string; created_at: string };
 type Operation = { id: string; recipient: string; amount: string; status: string; created_at: string };
 const settled = (status: string) => ["confirmed", "success"].includes(status);
-const dateKey = (date: Date) => date.toISOString().slice(0, 10);
+// The dashboard is a local business-day view. Avoid converting local midnight
+// to UTC here; in timezones east of UTC that made today's settled payments
+// compare against yesterday's chart point.
+const dateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const dateLabel = (date: Date) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
 const statusText = (value: string) => ({ confirmed: "Settled", success: "Settled", awaiting_payment: "Awaiting payment", routing: "Swapping through NEAR", submitted: "Confirming", awaiting_wallet_approval: "Awaiting approval" }[value] ?? value.replaceAll("_", " "));
 
