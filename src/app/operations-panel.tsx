@@ -25,21 +25,39 @@ const tokenUnits = (amount: string, decimals: number) => { const [whole, fractio
 const operationStatus = (status: string) => ({ confirmed: "Settled", routing: "Swapping through NEAR", submitted: "Confirming", awaiting_wallet_approval: "Awaiting wallet", review_ready: "Ready for review", awaiting_bank_connection: "Awaiting bank connection", simulation_ready: "Legacy demo", simulated_completed: "Legacy demo only", verification_failed: "Could not verify" }[status] ?? status.replaceAll("_", " "));
 
 async function connectMeteorWallet(expectedAccountId: string) {
-  const [{ setupWalletSelector }, { setupMeteorWallet }] = await Promise.all([
+  const [{ setupWalletSelector }, { setupMeteorWallet }, { setupModal }] = await Promise.all([
     import("@near-wallet-selector/core"),
     import("@near-wallet-selector/meteor-wallet"),
+    import("@near-wallet-selector/modal-ui"),
   ]);
-  const selector = await setupWalletSelector({ network: "testnet", modules: [setupMeteorWallet()] });
-  const meteor = await selector.wallet("meteor-wallet") as unknown as MeteorWallet;
-  let accounts = await meteor.getAccounts();
-  if (!accounts.length) {
-    await meteor.signIn({});
-    accounts = await meteor.getAccounts();
+  const selector = await setupWalletSelector({ network: "testnet", modules: [setupMeteorWallet()], allowMultipleSelectors: true });
+  const hasExpectedAccount = () => selector.store.getState().accounts.some((account) => account.accountId.toLowerCase() === expectedAccountId.toLowerCase());
+
+  if (!hasExpectedAccount()) {
+    const modal = setupModal(selector, {
+      theme: "light",
+      description: `Connect ${expectedAccountId} to approve this NEAR Testnet payment.`,
+    });
+    modal.show();
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        subscription.unsubscribe();
+        modal.hide();
+        reject(new Error("No NEAR wallet account was connected. Select your account in the wallet window, then try again."));
+      }, 120_000);
+      const subscription = selector.store.observable.subscribe(() => {
+        if (!hasExpectedAccount()) return;
+        window.clearTimeout(timeout);
+        subscription.unsubscribe();
+        modal.hide();
+        resolve();
+      });
+    });
   }
-  if (!accounts.some((account) => account.accountId.toLowerCase() === expectedAccountId.toLowerCase())) {
-    throw new Error(`Meteor is connected to a different NEAR account. Select ${expectedAccountId} in Meteor Wallet.`);
-  }
-  return meteor;
+  const { selectedWalletId } = selector.store.getState();
+  if (!selectedWalletId) throw new Error("Choose a NEAR wallet in the connection window, then try again.");
+  selector.setActiveAccount(expectedAccountId);
+  return selector.wallet(selectedWalletId) as unknown as MeteorWallet;
 }
 
 export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wallets: Wallet[]; contacts: Contact[]; onAddWallet: () => void }) {
