@@ -16,12 +16,16 @@ export async function POST(_request: Request, { params }: { params: Promise<{ op
   }
 
   const deadline = new Date(Date.now() + 12 * 60 * 1000).toISOString();
+  // A wallet-held NEP-141 balance should enter Tidepool through the verifier.
+  // This is a single ft_transfer_call and avoids creating/registering a new
+  // implicit token account for every quote.
+  const depositType = sourceWallet.network === "NEAR Testnet" ? "INTENTS" : "ORIGIN_CHAIN";
   const quoteRequest = {
     dry: false,
     swapType: "EXACT_OUTPUT",
     slippageTolerance: 100,
     originAsset,
-    depositType: "ORIGIN_CHAIN",
+    depositType,
     destinationAsset,
     amount: Math.round(Number(operation.amount) * 1_000_000).toString(),
     refundTo: sourceWallet.address,
@@ -35,6 +39,6 @@ export async function POST(_request: Request, { params }: { params: Promise<{ op
   if (!upstream.ok) return NextResponse.json({ error: payload.message ?? "Tidepool could not create an intent quote.", details: payload }, { status: upstream.status });
 
   await updateOperation(operationId, "awaiting_wallet_approval", { depositAddress: payload.quote?.depositAddress, routeStatus: "QUOTE_READY", providerReference: payload.correlationId });
-  await addOperationEvent(operationId, "tidepool.quote_ready", { correlationId: payload.correlationId, depositAddress: payload.quote?.depositAddress, amountIn: payload.quote?.amountIn, amountInFormatted: payload.quote?.amountInFormatted, amountOutFormatted: payload.quote?.amountOutFormatted, originNetwork: sourceWallet.network, destinationNetwork: operation.network, deadline: payload.quote?.deadline ?? deadline });
+  await addOperationEvent(operationId, "tidepool.quote_ready", { correlationId: payload.correlationId, depositAddress: payload.quote?.depositAddress, amountIn: payload.quote?.amountIn, amountInFormatted: payload.quote?.amountInFormatted, amountOutFormatted: payload.quote?.amountOutFormatted, originNetwork: sourceWallet.network, destinationNetwork: operation.network, depositType, deadline: payload.quote?.deadline ?? deadline });
   return NextResponse.json({ data: payload });
 }

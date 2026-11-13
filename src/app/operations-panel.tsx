@@ -280,11 +280,27 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
         const outcome = await meteor.signAndSendTransaction({
           signerId: selectedWallet.address,
           receiverId: "usdc.tidepool-sandbox.testnet",
-          actions: [actionCreators.functionCall("ft_transfer", { receiver_id: quote.quote.depositAddress, amount: quote.quote.amountIn, memo: `Folio ${created.id}` }, BigInt("30000000000000"), BigInt(1))],
+          actions: [actionCreators.functionCall(
+            "ft_transfer_call",
+            {
+              receiver_id: "verifier.tidepool-sandbox.testnet",
+              amount: quote.quote.amountIn,
+              msg: quote.quote.depositAddress,
+            },
+            BigInt("100000000000000"),
+            BigInt(1),
+          )],
         });
         const nearTx = outcome?.transaction?.hash;
         if (!nearTx) throw new Error("Meteor did not return a NEAR transaction reference.");
         setActiveNearTx(nearTx);
+        const depositResponse = await fetch("/api/oneclick/v0/deposit/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ txHash: nearTx, depositAddress: quote.quote.depositAddress, nearSenderAccount: selectedWallet.address }),
+        });
+        const depositJson = await depositResponse.json();
+        if (!depositResponse.ok) throw new Error(depositJson.message ?? depositJson.error ?? "Your NEAR transfer was sent, but Tidepool could not begin tracking it.");
         const response = await fetch(`/api/operations/${encodeURIComponent(created.id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "submitNear", nearTx }) });
         const json = await response.json();
         if (!response.ok) throw new Error(json.error ?? "The Meteor transaction was sent, but tracking could not start.");
