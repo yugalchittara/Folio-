@@ -81,6 +81,8 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
   const relevantContacts = contacts.filter((contact) => recipientType === "Supplier" ? contact.type === "Supplier" : contact.type === "Team member");
   const selectedBankAccount = bankAccounts.find((account) => account.id === bankAccountId);
   const isNearSourceWallet = selectedWallet?.network === "NEAR Testnet";
+  const recipientNetworkValid = ["Base Sepolia", "Arbitrum Sepolia"].includes(normalizeTestnetNetwork(recipientNetwork));
+  const visibleFormError = formError === "Choose Base Sepolia or Arbitrum Sepolia for the recipient." && recipientNetworkValid ? "" : formError;
   const walletDrafts: Operation[] = [];
   const activeOperationId = activeOperation?.id;
 
@@ -339,7 +341,7 @@ export default function OperationsPanel({ wallets, contacts, onAddWallet }: { wa
         {action === "send" && <><label className="field"><span>Recipient wallet address</span><input value={address} onChange={(event) => { setAddress(event.target.value); setContactId(""); setFormError(""); }} placeholder="0x…" /></label><label className="field"><span>Recipient network</span><select value={normalizeTestnetNetwork(recipientNetwork)} onChange={(event) => { setRecipientNetwork(event.target.value); setFormError(""); }}><option>Base Sepolia</option><option>Arbitrum Sepolia</option></select></label></>}
         <label className="field sm:col-span-2"><span>{action === "send" ? "Invoice or payment reference (optional)" : "Withdrawal note (optional)"}</span><input value={reference} onChange={(event) => setReference(event.target.value)} placeholder={action === "send" ? "Invoice or reason for payment" : "What is this withdrawal for?"} /></label>
       </div>
-      {formError && <p role="alert" className="mt-4 text-sm text-[#a04b45]">{formError}</p>}
+      {visibleFormError && <p role="alert" className="mt-4 text-sm text-[#a04b45]">{visibleFormError}</p>}
       {success && <p role="status" className="mt-4 flex items-start gap-2 text-sm text-[#436e2e]"><CheckCircleIcon size={17} weight="fill" className="mt-0.5 shrink-0" />{success}</p>}
       <button onClick={reviewPayment} className="action-button mt-6">{action === "send" ? "Submit payment" : "Review payout"} <ArrowRightIcon size={16} weight="bold" /></button>
       {action === "bank" && <p className="mt-3 text-xs text-[#718070]">Payout requests stay pending until Circle CPN is connected. No funds move at this stage.</p>}
