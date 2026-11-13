@@ -12,6 +12,10 @@ Stablecoins can move globally, but a business still has to stitch together a che
 
 Folio makes the business operate from one place while customers and payees use the assets and networks available to them.
 
+## A quick reviewer path
+
+Open the [Nook Goods storefront](https://folio-amber-delta.vercel.app/shop) or [POS terminal](https://folio-amber-delta.vercel.app/pos), choose a crypto payment, and follow the hosted checkout through wallet approval and the NEAR Intents settlement timeline. Then open the [Business Console](https://folio-amber-delta.vercel.app/console) to find that payment in Transactions and Reconciliation and inspect the corresponding KYT-style record. The Operations tab shows how the merchant initiates a supplier or team payout from a selected business wallet.
+
 ## What reviewers can experience
 
 Folio is deliberately built as a connected product—not a single happy-path swap screen.
@@ -21,6 +25,22 @@ Folio is deliberately built as a connected product—not a single happy-path swa
 3. **Route** — The buyer chooses a supported wallet and testnet route. Folio creates a live Tidepool / NEAR Intents-compatible quote server-side, opens the wallet for the exact payment, and tracks source, NEAR, and destination references.
 4. **Operate** — In the Business Console, the merchant sees incoming payments, live balances, daily volume, transaction history, and reconciliation records. The same console creates cross-chain supplier or team payouts with a NEAR Intents route.
 5. **Off-ramp workflow** — The console also models a Circle CPN bank-payout instruction so a business can move from onchain collections to a traditional bank destination. The CPN leg is intentionally illustrative until a Circle sandbox/production integration and approved beneficiary are available.
+
+### One merchant, multiple checkout channels
+
+The merchant configures an online store and a POS terminal as separate integrations, assigning a merchant name and receiving wallet to each. The storefront and POS each create a payment request tagged with their integration, then send the customer to the same hosted checkout. A payment link can use that hosted flow too. The resulting payment and screening history is visible in one Business Console, with its channel and receiving wallet preserved for reconciliation.
+
+This is a working merchant journey across Folio's demo surfaces. A standalone widget or SDK for an arbitrary third-party site is a future packaging step; the current integration surface is the hosted checkout and payment-request API.
+
+### One payment, end to end
+
+For example, a Nook Goods customer selects crypto for a 2 USDC order. Folio creates a request, records a demo source-wallet screening decision before issuing a live Tidepool quote, and asks the buyer's browser wallet to approve the quoted transfer. The checkout tracks the source transaction, NEAR Intents routing, and merchant payout. Only a successful provider status marks the payment settled; the same result then appears in the buyer receipt and the merchant's transaction and reconciliation views.
+
+Two recorded testnet checkout examples are [an online order](https://folio-amber-delta.vercel.app/pay/WEB-D6AD9606) ([source transaction](https://sepolia.etherscan.io/tx/0x09dcce8ffbb0a98b3ef37b73ae5ca7a3db59ce8b3c3f73a9e5e9ec440332ecd8), [NEAR transaction](https://testnet.nearblocks.io/txns/3yVBynW64w9UizWY3ZCB2K2MxanqeMa7JszSBA4WNKR4)) and [a POS sale](https://folio-amber-delta.vercel.app/pay/POS-628392) ([source transaction](https://sepolia.etherscan.io/tx/0x0fef5c3857997a334165ee289d344e05d8152ce56f6a80d880f0a3334e9bc793), [NEAR transaction](https://testnet.nearblocks.io/txns/J3oCdbhePXnAnvpnMGDXeqHxMUHg6Tvskjf98KdCtrCT)). These references are recorded by the demo's payment ledger; a fresh payment requires a funded testnet wallet.
+
+### From collections to business expenses
+
+The receiving wallet's balance becomes available to the merchant's operations workflow. A merchant can select that NEAR Testnet wallet, a saved supplier or team contact, and a supported destination network such as Base Sepolia. Folio requests a destination-specific intent quote, asks the NEAR wallet to fund it, and follows the route toward the recipient. The console keeps the payment reference, recipient, source wallet, and route status together. This closes the operational loop between accepting revenue and paying expenses without requiring the merchant to perform each bridge manually.
 
 ## Why NEAR Intents
 
