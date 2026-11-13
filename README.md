@@ -1,67 +1,88 @@
-# Folio
+# Folio — Global business finance, onchain
 
-**Folio lets businesses accept payments in any supported asset from any supported blockchain, settle into a chosen destination, and put the resulting balance to work—paying suppliers, teams, and operating expenses from one console.**
+**Folio is an operating layer for businesses that need to accept stablecoin payments, manage onchain balances, pay suppliers and teams across chains, and prepare fiat payouts—without making each business operate chain by chain.**
 
-The demo shows one connected payment system for a merchant or business:
+[Live demo](https://folio-amber-delta.vercel.app) · [Business Console](https://folio-amber-delta.vercel.app/console) · [POS](https://folio-amber-delta.vercel.app/pos) · [Merchant storefront](https://folio-amber-delta.vercel.app/shop)
 
-- accept payments at a physical POS terminal or online storefront, without asking the business to manage the buyer's source chain;
-- let a buyer choose the wallet, supported asset, and supported blockchain they already use;
-- route the payment through the NEAR Intents-compatible Tidepool flow;
-- record wallet screening, payment progress, transaction references, and reconciliation data in the business console; and
-- use the settled balance to pay suppliers and team members, or prepare a bank-payout instruction through Circle CPN.
+> Built for the **Real-World Money** track. Folio is a testnet prototype, not a custody product, money transmitter, or live fiat off-ramp.
 
-> **Demo notice:** This project is designed for testnet and hackathon demonstration. It is not a custody product, money transmitter, or live fiat off-ramp. Circle CPN and KYT are represented in the product flow, but require provider onboarding and server-side integrations before real use.
+## The problem
+
+Stablecoins can move globally, but a business still has to stitch together a checkout, wallet selection, transaction monitoring, reconciliation, supplier payouts, and off-ramp operations. Each additional chain adds another integration and another operational blind spot.
+
+Folio makes the business operate from one place while customers and payees use the assets and networks available to them.
+
+## What reviewers can experience
+
+Folio is deliberately built as a connected product—not a single happy-path swap screen.
+
+1. **Accept** — Create a payment request from a payment link, the Nook Goods web store, or a POS terminal. Each entry point lands in the same hosted checkout and shared ledger.
+2. **Screen** — Before an onchain route is opened, Folio creates a KYT-style source-wallet screening record and exposes it later in reconciliation. This is a product control and audit trail, not a claim of production compliance coverage.
+3. **Route** — The buyer chooses a supported wallet and testnet route. Folio creates a live Tidepool / NEAR Intents-compatible quote server-side, opens the wallet for the exact payment, and tracks source, NEAR, and destination references.
+4. **Operate** — In the Business Console, the merchant sees incoming payments, live balances, daily volume, transaction history, and reconciliation records. The same console creates cross-chain supplier or team payouts with a NEAR Intents route.
+5. **Off-ramp workflow** — The console also models a Circle CPN bank-payout instruction so a business can move from onchain collections to a traditional bank destination. The CPN leg is intentionally illustrative until a Circle sandbox/production integration and approved beneficiary are available.
+
+## Why NEAR Intents
+
+Folio uses intent-based routing as the abstraction boundary between a business operation and the chains involved in fulfilling it.
+
+For a NEAR-origin business payout, Folio requests an `INTENTS` deposit quote, then uses the connected NEAR wallet to call `ft_transfer_call` into the Tidepool verifier with the quote’s single-use deposit address. Tidepool tracks the deposit and routes the requested outcome to the recipient chain. For EVM-origin checkout routes, Folio opens the customer’s installed wallet for the exact ERC-20 transfer to the quote-specific deposit address.
+
+The business sees a clear operational outcome—collect funds, pay a recipient, reconcile a result—rather than a sequence of manual bridges and chain-specific steps.
 
 ## Product surfaces
 
-All interfaces are part of one Next.js application and one shared API layer.
-
-| Route | Interface | Purpose |
+| Route | Surface | What it demonstrates |
 | --- | --- | --- |
-| `/` | Folio website | Product website and integration positioning |
-| `/console` | Business console | Merchant wallets, payment requests, operations, transactions, reconciliation, contacts, and integrations |
-| `/pos` | POS terminal | Cashier creates an order, selects payment method, and shows a crypto QR checkout when selected |
-| `/shop` | Nook Goods storefront | Example online merchant checkout with card, bank, and crypto method selection |
-| `/pay/[requestId]` | Buyer checkout | Buyer selects a supported route and wallet, completes wallet screening, and approves the exact payment |
+| `/` | Folio website | Product positioning, checkout flow, operations model, integrations, and industries |
+| `/console` | Business Console | Wallets, payment requests, balances, transactions, reconciliation, contacts, integrations, and payouts |
+| `/pos` | POS terminal | Cashier creates a sale, selects crypto checkout, and presents a hosted payment QR |
+| `/shop` | Nook Goods storefront | Online checkout with a realistic payment-method choice |
+| `/pay/[requestId]` | Hosted buyer checkout | Wallet screening, live quote, wallet approval, settlement progress, and receipt |
 
-The POS and storefront create a payment request. Both then direct the buyer to the same hosted checkout at `/pay/[requestId]`.
-
-## How the payment demo works
+## Architecture
 
 ```text
-POS or online storefront
-  → creates a Folio payment request
-  → buyer opens hosted checkout
-  → buyer connects a wallet and selects a supported route
-  → demo KYT screening records a decision
-  → Tidepool quote and deposit workflow executes
-  → payment status is persisted
-  → POS/storefront and business console receive the updated outcome
+POS / payment link / e-commerce checkout
+              │
+              ▼
+       Hosted Folio checkout
+       ├─ KYT-style wallet-screening audit record
+       ├─ Tidepool quote + deposit submission + status polling
+       └─ buyer wallet approval for the exact route
+              │
+              ▼
+     NEAR Intents-compatible settlement
+              │
+              ▼
+ Business Console ──► supplier/team payouts ──► destination chain
+       │
+       └───────────► reconciliation + bank-payout instruction (Circle CPN workflow)
 ```
 
-When Tidepool returns transaction references, Folio shows the source payment, NEAR transaction, and destination transaction links in the buyer receipt, POS receipt, transactions view, and reconciliation view.
+All surfaces use one Next.js app and a shared API/persistence layer, so POS, web checkout, buyer receipt, and console report the same payment lifecycle.
 
-## What is live versus illustrative
+## What is live, testnet, and illustrative
 
-| Capability | Current implementation |
+| Capability | Status |
 | --- | --- |
-| Payment requests, POS sessions, checkout state, wallets, contacts, operations, and reconciliation | Persisted locally in SQLite for the demo |
-| Tidepool quote, deposit submission, and status polling | Server-side integration using the configured Tidepool / 1Click-compatible endpoint |
-| Buyer wallet interaction | Browser wallet flow for supported EVM testnet routes |
-| KYT / sanctions screening | Demo policy and audit record; replace with TRM, Chainalysis, or Elliptic before production |
-| Circle CPN bank payout | Product flow and saved payout instruction only; no Circle API call or fiat movement occurs |
-| Merchant authentication and multi-tenancy | Not yet implemented; this demo is intended for a controlled environment |
+| Payment requests, POS sessions, wallets, contacts, operations, transaction history, and reconciliation | Persisted demo data |
+| Tidepool quote generation, deposit submission, and status polling | **Live testnet integration** through a server-side Tidepool / 1Click-compatible API |
+| EVM checkout wallet interaction | **Live testnet** browser-wallet flow for supported EVM routes |
+| NEAR payout wallet interaction | **Live testnet** NEAR Wallet Selector + Meteor Wallet flow using `ft_transfer_call` into the verifier |
+| Route status, source transaction, NEAR transaction, and destination transaction references | Persisted and displayed when returned by the provider |
+| KYT / sanctions screening | Policy-driven demo control and audit record; production requires a provider such as Chainalysis, TRM, or Elliptic |
+| KYC / merchant onboarding | Product boundary only; not implemented |
+| Circle CPN bank payout | Product workflow and saved instruction only; no Circle API call or fiat movement |
 
-## Local setup
+## Quick start
 
 ### Prerequisites
 
-- Node.js 20 or newer
+- Node.js 20+
 - npm
-- SQLite command-line binary available at `/usr/bin/sqlite3` (the local demo ledger uses it)
-- A browser wallet and test funds only if running the live payment demonstration
-
-### Install and run
+- SQLite CLI at `/usr/bin/sqlite3` for the local demo ledger
+- A funded browser wallet and testnet USDC only when running the live payment paths
 
 ```bash
 npm ci
@@ -71,81 +92,41 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Verify production build
+### Verify
 
 ```bash
 npm run lint
 npx tsc --noEmit
-npm run build
 ```
 
-The project uses the verified webpack production build command configured in `package.json`.
+## Demonstration path
 
-## Environment variables
+1. Open `/console` and review the merchant’s wallets, integrations, and transaction activity.
+2. Use `/pos` to enter a receipt ID and amount, choose **Crypto wallet**, then scan the checkout QR; or open `/shop` and select the crypto payment method.
+3. In the hosted checkout, select a supported source route and approve the exact quote in the wallet.
+4. Follow the settlement timeline from source transfer through NEAR Intents routing to merchant payout.
+5. Return to `/console` to inspect the payment volume, transaction detail, KYT-style audit record, and reconciliation.
+6. In **Operations**, create a supplier or team payout. Select a NEAR source wallet to demonstrate the intent deposit flow, or choose an EVM source wallet for the equivalent EVM approval path.
 
-Copy `.env.example` to `.env.local`. Never commit `.env.local`.
+## Configuration
+
+Copy `.env.example` to `.env.local`. Never commit secrets.
 
 | Variable | Purpose |
 | --- | --- |
 | `ONECLICK_BASE_URL` | Tidepool or 1Click-compatible API base URL |
-| `ONECLICK_JWT` | Optional server-side partner credential; never expose this to the browser |
+| `ONECLICK_JWT` | Optional server-side partner credential; never exposed to the browser |
 | `TIDEPOOL_MERCHANT_BASE_SEPOLIA_ADDRESS` | Fallback merchant receiving address for the demo route |
-| `NEXT_PUBLIC_CHECKOUT_ORIGIN` | Public application origin used in POS QR codes, for example a Vercel deployment URL |
+| `NEXT_PUBLIC_CHECKOUT_ORIGIN` | Public application origin used in POS QR codes |
 | `BASE_SEPOLIA_RPC_URL` / `ARBITRUM_SEPOLIA_RPC_URL` | Optional RPC overrides for balance reads |
-| `COMPLIANCE_PROVIDER` | Demo KYT provider mode; replace with a real provider adapter before launch |
-| `CIRCLE_CPN_*` | Reserved for future Circle CPN sandbox integration |
-| `DATABASE_URL` | Reserved for the production Postgres migration |
-| `WEBHOOK_SIGNING_SECRET` | Reserved for future signed webhook verification |
+| `COMPLIANCE_PROVIDER` | Demo KYT mode; replace with a real provider adapter before launch |
+| `CIRCLE_CPN_*` | Reserved for Circle CPN sandbox / production credentials |
 
-## Demonstrating the end-to-end flow
+## Production boundaries
 
-1. Open `/console` and add a receiving wallet if one has not already been saved.
-2. Use `/pos` to enter an invoice/reference and dollar amount, then select **Crypto wallet**; or use `/shop` and choose crypto during checkout.
-3. Scan the POS QR code or continue from the storefront to the hosted buyer checkout.
-4. Select the available source route and connect the buyer wallet.
-5. Complete the wallet-screening step and approve the exact transaction in the wallet.
-6. Wait for the Tidepool status to complete. The POS and buyer receipt show the payment reference and available on-chain links.
-7. Return to `/console` to inspect the payment in Transactions and Reconciliation.
+Before handling production value, Folio needs managed persistent storage, tenant isolation, role-based access control, signed webhooks, a real KYT/KYC provider, provider onboarding, verified recipient controls, risk limits, and appropriate regulatory/compliance design. Vercel Functions do not provide durable writable application storage; replace the demo adapter with managed Postgres before real-user deployment.
 
-## Architecture
-
-```text
-Next.js application
-├── Folio website                  /
-├── Business console               /console
-├── POS terminal                   /pos
-├── E-commerce storefront          /shop
-├── Hosted buyer checkout          /pay/[requestId]
-└── API routes                     /api/*
-    ├── payment requests and lifecycle state
-    ├── wallets, contacts, operations, and integrations
-    ├── reconciliation records
-    └── server-side Tidepool / 1Click proxy
-```
-
-The current local persistence adapter is [`src/lib/local-db.ts`](src/lib/local-db.ts). It stores demo data in `data/settlement-router.db`, which is intentionally ignored by Git.
-
-## Deployment notes
-
-Deploy this as **one Vercel project**, not separate projects. The website, console, POS, storefront, hosted checkout, and API routes share application state and should use one origin.
-
-For a durable deployment, replace the local SQLite adapter with managed Postgres before enabling real users. Vercel Functions do not provide persistent writable application storage. Configure production credentials in Vercel Environment Variables—not in the repository—and set `NEXT_PUBLIC_CHECKOUT_ORIGIN` to the deployed public URL.
-
-## Repository safety
-
-The repository intentionally ignores:
-
-- `.env.local` and other local environment files;
-- the local SQLite ledger and journal files under `data/`;
-- `node_modules`, `.next`, logs, and local Vercel project state.
-
-The committed `.env.example` lists configuration names only and contains no values.
-
-## Hackathon context
-
-Folio is submitted as a **Real-World Money** concept: merchant payments, payment links, reconciliation, and business operations powered by cross-chain intent settlement.
-
-Before submitting, keep this repository public, include a working demo or reproducible local instructions, and describe exactly which parts are testnet, demo-only, or provider-dependent.
+See [LIVE_INTEGRATION_STATUS.md](LIVE_INTEGRATION_STATUS.md) for implementation-level integration notes and [EXTERNAL_DEPENDENCIES.md](EXTERNAL_DEPENDENCIES.md) for third-party boundaries.
 
 ## License
 
