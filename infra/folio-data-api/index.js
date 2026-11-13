@@ -158,6 +158,8 @@ exports.handler = async (event) => {
     return response(400, { error: "Unsupported data operation" });
   } catch (error) {
     console.error(error);
-    return response(500, { error: "Data service unavailable" });
+    const message = error instanceof Error ? error.message : "Data service unavailable";
+    const statusCode = message.includes("used by") ? 409 : message === "Unsupported data operation" ? 400 : 500;
+    return response(statusCode, { error: message, service: SERVICE_VERSION });
   }
 };
